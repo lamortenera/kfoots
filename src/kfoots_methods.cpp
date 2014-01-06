@@ -1,6 +1,6 @@
 #include <Rcpp.h>
 #include <boost/unordered_map.hpp>
-#include "getLlik.hpp"
+#include "core.hpp"
 
 // [[Rcpp::export]]
 Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, int nthreads=1){
