@@ -21,11 +21,14 @@ Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, int nthreads=1){
 // [[Rcpp::export]]
 Rcpp::List mapToUnique(Rcpp::IntegerVector values){
 	Rcpp::IntegerVector map(values.length());
+	
 	Vec<int> valuesVec = asVec<int>(values);
 	Vec<int> mapVec = asVec<int>(map);
 	std::vector<int> uniqueCS;
 	map2unique_core(valuesVec, mapVec, uniqueCS);
-	return Rcpp::List::create(Rcpp::Named("values")=Rcpp::IntegerVector(uniqueCS.begin(),uniqueCS.end()), Rcpp::Named("map")=map);
+	
+	Rcpp::List list =  Rcpp::List::create(Rcpp::Named("values")=Rcpp::IntegerVector(uniqueCS.begin(),uniqueCS.end()), Rcpp::Named("map")=map);
+	return list;
 }
 
 
@@ -58,70 +61,6 @@ Rcpp::NumericVector sumAt(Rcpp::NumericVector values, Rcpp::IntegerVector map, i
 	}
 	return res;
 }
-
-
-
-// [[Rcpp::export]]
-Rcpp::NumericVector lLik_inner(Rcpp::IntegerMatrix counts, Rcpp::List model, 
-		Rcpp::IntegerVector uniqueCS,
-		Rcpp::IntegerVector map,
-		Rcpp::NumericVector multinomConst,
-		int nthreads=1){
-	
-	Mat<int> countsMat = asMat<int>(counts);
-	Rcpp::NumericVector lliks(counts.ncol());
-	Vec<double> lliksVec = asVec<double>(lliks);
-	Rcpp::NumericVector ps = model["ps"];
-	NegMultinom NMmodel(model["r"], model["mu"], Vec<double>(ps.begin(), ps.length()));
-	
-	//re-format preprocessing data if present, otherwise, create it.
-	//If created here they will not be persistent
-	NMPreproc preproc(asVec<int>(uniqueCS), asVec<int>(map), asVec<double>(multinomConst));
-	
-	NMmodel.getLlik(countsMat, lliksVec, preproc, nthreads);
-	
-	return lliks;
-}
-
-/*
-// [[Rcpp::export]]
-Rcpp::List tryPreproc(Rcpp::IntegerMatrix counts, Rcpp::List model){
-	Mat<int> countsMat = asMat<int>(counts);
-	NMPreproc preproc(countsMat);
-	
-	Rcpp::NumericVector ps = model["ps"];
-	NegMultinom NMmodel(model["r"], model["mu"], Vec<double>(ps.begin(), ps.length()));
-	std::vector<double> nbinoms(preproc.uniqueCS.size());
-	for (int i = 0; i < nbinoms.size(); ++i){
-		nbinoms[i] = NMmodel.logNBinom(preproc.uniqueCS[i]);
-	}
-	
-	return Rcpp::List::create(
-		Rcpp::Named("uniqueCS")=preproc.uniqueCS,
-		Rcpp::Named("map")=preproc.map,
-		Rcpp::Named("multinomConst")=preproc.multinomConst
-		//Rcpp::Named("lognbinoms")=nbinoms
-		);
-}
-*/
-
-
-// [[Rcpp::export]]
-Rcpp::NumericVector lfactorial2(Rcpp::IntegerVector nums){
-	Rcpp::NumericVector ret(nums.length());
-	double* d = ret.begin();
-	const int* e = nums.end();
-	
-	CachedLFact lfact(0.75);
-	
-	for (int* i = nums.begin(); i < e; ++i, ++d){
-		*d = lfact(*i);
-		
-	}
-	
-	return ret;
-}
-
 
 
 // [[Rcpp::export]]
@@ -161,4 +100,39 @@ Rcpp::NumericVector fitMultinom(Rcpp::IntegerMatrix counts, Rcpp::NumericVector 
 	Rcpp::NumericVector fit(counts.nrow());
 	fitMultinom_core(asMat<int>(counts), asVec<double>(posteriors), asVec<double>(fit), std::max(nthreads, 1));
 	return fit;
+}
+
+
+// [[Rcpp::export]]
+Rcpp::NumericVector lLik(Rcpp::IntegerMatrix counts, Rcpp::List model, 
+		SEXP ucsSEXP = R_NilValue,
+		SEXP multinomConstSEXP = R_NilValue,
+		int nthreads=1){
+	
+	
+	if (Rf_isNull(ucsSEXP)){
+		ucsSEXP = (SEXP) mapToUnique(colSumsInt(counts, nthreads));
+	}
+	if (Rf_isNull(multinomConstSEXP)){
+		multinomConstSEXP = (SEXP) getMultinomConst(counts, nthreads);
+	}
+	
+	Rcpp::List ucs(ucsSEXP); 
+	Rcpp::IntegerVector uniqueCS = ucs["values"];
+	Rcpp::IntegerVector map = ucs["map"];
+	Rcpp::NumericVector multinomConst(multinomConstSEXP);
+	
+	Mat<int> countsMat = asMat<int>(counts);
+	Rcpp::NumericVector lliks(counts.ncol());
+	Vec<double> lliksVec = asVec<double>(lliks);
+	Rcpp::NumericVector ps = model["ps"];
+	NegMultinom NMmodel(model["r"], model["mu"], Vec<double>(ps.begin(), ps.length()));
+	
+	//re-format preprocessing data if present, otherwise, create it.
+	//If created here they will not be persistent
+	NMPreproc preproc(asVec<int>(uniqueCS), asVec<int>(map), asVec<double>(multinomConst));
+	
+	NMmodel.getLlik(countsMat, lliksVec, preproc, nthreads);
+	
+	return lliks;
 }

@@ -106,26 +106,6 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
-// lLik_inner
-Rcpp::NumericVector lLik_inner(Rcpp::IntegerMatrix counts, Rcpp::List model, Rcpp::IntegerVector uniqueCS, Rcpp::IntegerVector map, Rcpp::NumericVector multinomConst, int nthreads = 1);
-RcppExport SEXP kfoots_lLik_inner(SEXP countsSEXP, SEXP modelSEXP, SEXP uniqueCSSEXP, SEXP mapSEXP, SEXP multinomConstSEXP, SEXP nthreadsSEXP) {
-BEGIN_RCPP
-    SEXP __sexp_result;
-    {
-        Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
-        Rcpp::traits::input_parameter< Rcpp::List >::type model(modelSEXP );
-        Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type uniqueCS(uniqueCSSEXP );
-        Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type map(mapSEXP );
-        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type multinomConst(multinomConstSEXP );
-        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        Rcpp::NumericVector __result = lLik_inner(counts, model, uniqueCS, map, multinomConst, nthreads);
-        PROTECT(__sexp_result = Rcpp::wrap(__result));
-    }
-    UNPROTECT(1);
-    return __sexp_result;
-END_RCPP
-}
 // lfactorial2
 Rcpp::NumericVector lfactorial2(Rcpp::IntegerVector nums);
 RcppExport SEXP kfoots_lfactorial2(SEXP numsSEXP) {
@@ -221,6 +201,25 @@ BEGIN_RCPP
         Rcpp::traits::input_parameter< Rcpp::NumericVector >::type posteriors(posteriorsSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
         Rcpp::NumericVector __result = fitMultinom(counts, posteriors, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// lLik
+Rcpp::NumericVector lLik(Rcpp::IntegerMatrix counts, Rcpp::List model, SEXP ucsSEXP = R_NilValue, SEXP multinomConstSEXP = R_NilValue, int nthreads = 1);
+RcppExport SEXP kfoots_lLik(SEXP countsSEXP, SEXP modelSEXP, SEXP ucsSEXPSEXP, SEXP multinomConstSEXPSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::List >::type model(modelSEXP );
+        Rcpp::traits::input_parameter< SEXP >::type ucsSEXP(ucsSEXPSEXP );
+        Rcpp::traits::input_parameter< SEXP >::type multinomConstSEXP(multinomConstSEXPSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::NumericVector __result = lLik(counts, model, ucsSEXP, multinomConstSEXP, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);
