@@ -102,31 +102,44 @@ Rcpp::NumericVector fitMultinom(Rcpp::IntegerMatrix counts, Rcpp::NumericVector 
 	return fit;
 }
 
+static inline NegMultinom parseModel(Rcpp::List model){
+	Rcpp::NumericVector ps = model["ps"];
+	return NegMultinom(model["r"], model["mu"], Vec<double>(ps.begin(), ps.length()));
+}
+
+static inline void parseModels(Rcpp::List models, Vec<double> mus, Vec<double> rs, Mat<double> ps){
+	unsigned int footsize = sizeof(double)*ps.nrow;
+	for (int i = 0; i < models.length(); ++i){
+		Rcpp::List model = models[i];
+		mus[i] = model["mu"]; rs[i] = model["r"];
+		Rcpp::NumericVector currps = model["ps"];
+		memcpy(ps.colptr(i), currps.begin(), footsize);
+	}
+}
 
 // [[Rcpp::export]]
 Rcpp::NumericVector lLik(Rcpp::IntegerMatrix counts, Rcpp::List model, 
-		SEXP ucsSEXP = R_NilValue,
-		SEXP multinomConstSEXP = R_NilValue,
+		SEXP ucs = R_NilValue,
+		SEXP mConst = R_NilValue,
 		int nthreads=1){
 	
 	
-	if (Rf_isNull(ucsSEXP)){
-		ucsSEXP = (SEXP) mapToUnique(colSumsInt(counts, nthreads));
+	if (Rf_isNull(ucs)){
+		ucs = (SEXP) mapToUnique(colSumsInt(counts, nthreads));
 	}
-	if (Rf_isNull(multinomConstSEXP)){
-		multinomConstSEXP = (SEXP) getMultinomConst(counts, nthreads);
+	if (Rf_isNull(mConst)){
+		mConst = (SEXP) getMultinomConst(counts, nthreads);
 	}
 	
-	Rcpp::List ucs(ucsSEXP); 
-	Rcpp::IntegerVector uniqueCS = ucs["values"];
-	Rcpp::IntegerVector map = ucs["map"];
-	Rcpp::NumericVector multinomConst(multinomConstSEXP);
+	Rcpp::List ucs_list(ucs); 
+	Rcpp::IntegerVector uniqueCS = ucs_list["values"];
+	Rcpp::IntegerVector map = ucs_list["map"];
+	Rcpp::NumericVector multinomConst(mConst);
 	
 	Mat<int> countsMat = asMat<int>(counts);
 	Rcpp::NumericVector lliks(counts.ncol());
 	Vec<double> lliksVec = asVec<double>(lliks);
-	Rcpp::NumericVector ps = model["ps"];
-	NegMultinom NMmodel(model["r"], model["mu"], Vec<double>(ps.begin(), ps.length()));
+	NegMultinom NMmodel = parseModel(model);
 	
 	//re-format preprocessing data if present, otherwise, create it.
 	//If created here they will not be persistent
@@ -136,3 +149,46 @@ Rcpp::NumericVector lLik(Rcpp::IntegerMatrix counts, Rcpp::List model,
 	
 	return lliks;
 }
+
+
+// [[Rcpp::export]]
+Rcpp::NumericMatrix lLikMat(Rcpp::IntegerMatrix counts, Rcpp::List models, 
+		SEXP ucs = R_NilValue,
+		SEXP mConst = R_NilValue,
+		int nthreads=1){
+	
+	//parse or compute preprocessing data
+	if (Rf_isNull(ucs)){
+		ucs = (SEXP) mapToUnique(colSumsInt(counts, nthreads));
+	}
+	if (Rf_isNull(mConst)){
+		mConst = (SEXP) getMultinomConst(counts, nthreads);
+	}
+	
+	Rcpp::List ucs_list(ucs); 
+	Rcpp::IntegerVector uniqueCS = ucs_list["values"];
+	Rcpp::IntegerVector map = ucs_list["map"];
+	Rcpp::NumericVector multinomConst(mConst);
+	NMPreproc preproc(asVec<int>(uniqueCS), asVec<int>(map), asVec<double>(multinomConst));
+	
+	Mat<int> countsMat = asMat<int>(counts);
+	//parsing the models
+	int nmodels = models.length();
+	int footlen = countsMat.nrow;
+	std::vector<double> musSTD(nmodels);
+	std::vector<double> rsSTD(nmodels);
+	std::vector<double> psSTD(nmodels*footlen);
+	Vec<double> mus = asVec(musSTD);
+	Vec<double> rs = asVec(rsSTD);
+	Mat<double> ps = asMat(psSTD, nmodels);
+	parseModels(models, mus, rs, ps);
+	//allocating some temporary memory
+	std::vector<double> tmpNB(uniqueCS.length()*nmodels);
+	//allocating return variable
+	Rcpp::NumericMatrix lliks(nmodels, countsMat.ncol);
+	
+	lLikMat_core(countsMat, mus, rs, ps, asMat<double>(lliks), preproc, asMat(tmpNB, uniqueCS.length()), nthreads);
+	
+	return lliks;
+}
+

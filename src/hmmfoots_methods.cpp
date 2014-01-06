@@ -1,4 +1,5 @@
 #include <Rcpp.h>
+#include "core.hpp"
 
 using namespace Rcpp;
 
@@ -24,116 +25,11 @@ typedef IntegerVector::iterator iiter;
 //'	\item{new_trans}{update for the transition probabilities (it is already normalized)}
 //' @export
 // [[Rcpp::export]]
-List forward_backward(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, NumericVector seqlens){
-	int k = initP.length();
-	int ncol = lliks.ncol();
-	NumericMatrix posteriors(k, ncol);
-	NumericMatrix new_trans(k, k);
-	NumericMatrix tmp(k, k);
-	NumericVector backward(k);
-	NumericVector new_backward(k);
-	
-	/* transform the lliks matrix to the original space (exponentiate). 
-	 * A column-specific factor can be multiplied to obtain a better numerical
-	 * stability */
-	
-	double tot_llik = 0;
-	for (int c = 0; c < ncol; ++c){
-		MatrixColumn<REALSXP> llikcol = lliks.column(c);
-		/* get maximum llik in the column */
-		double max_llik = llikcol[0];
-		for (int r = 1; r < k; ++r){
-			if (llikcol[r] > max_llik){ max_llik = llikcol[r]; }
-		}
-		/* subtract maximum and exponentiate */
-		tot_llik += max_llik;
-		for (int r = 0; r < k; ++r){
-			llikcol[r] = exp(llikcol[r] - max_llik);
-		}
-	}
-	
-	/* Do forward and backward loop for each chunk (defined by seqlens) */
-	for (int o = 0, chunk_start = 0; o < seqlens.length(); chunk_start += seqlens[o], ++o){
-		int chunk_end = chunk_start + seqlens[o];
-		/* FORWARD LOOP */
-		/* first iteration is from fictitious start state */
-		double cf = 0;
-		MatrixColumn<REALSXP> emissprob0 = lliks.column(chunk_start);
-		MatrixColumn<REALSXP> forward0 = posteriors.column(chunk_start);
-		for (int r = 0; r < k; ++r){
-			double p = emissprob0[r]*initP[r];
-			forward0[r] = p;
-			cf += p;
-		}
-		for (int r = 0; r < k; ++r){
-			forward0[r] = forward0[r]/cf;
-		}
-		tot_llik += log(cf);
-		/* all other iterations */
-		for (int i = chunk_start + 1; i < chunk_end; ++i){
-			cf = 0;//scaling factor
-			MatrixColumn<REALSXP> emissprob = lliks.column(i);
-			MatrixColumn<REALSXP> forward = posteriors.column(i);
-			MatrixColumn<REALSXP> last_forward = posteriors.column(i-1);
-		
-			for (int t = 0; t < k; ++t){
-				for (int s = 0; s < k; ++s){
-					forward[t] += last_forward[s]*trans(s,t)*emissprob[t];
-				}
-				cf += forward[t];
-			}
-			for (int t = 0; t < k; ++t){
-				forward[t] = forward[t]/cf;
-			}
-			tot_llik += log(cf);
-		}
-		
-		/* BACKWARD LOOP */
-		/* first iteration set backward to 1/k, 
-		 * last column of posteriors is already ok */
-		for (int r = 0; r < k; ++r){
-			backward[r] = 1.0/k;
-		}
-		for (int i = chunk_end-2; i >= chunk_start; --i){
-			MatrixColumn<REALSXP> emissprob = lliks.column(i+1);
-			MatrixColumn<REALSXP> posterior = posteriors.column(i);
-			cf = 0;
-			double norm = 0;
-			/* joint probabilities and backward vector */
-			for (int s = 0; s < k; ++s){
-				//the forward variable is going to be overwritten with the posteriors
-				double pc = posterior[s];
-				new_backward[s] = 0;
-				for (int t = 0; t < k; ++t){
-					double p = trans(s,t)*emissprob[t]*backward[t];
-					tmp(s, t) = pc*p;
-					new_backward[s] += p;
-				}
-				cf += new_backward[s];
-			}
-			/* update backward vector */
-			for (int s = 0; s < k; ++s){
-				backward[s] = new_backward[s]/cf;
-				norm += backward[s]*posterior[s];
-			}
-			/* update transition probabilities */
-			for (int t = 0; t < k*k; ++t){
-				new_trans[t] += tmp[t]/(norm*cf);
-			}
-			/* get posteriors */
-			for (int s = 0; s < k; ++s){
-				posterior[s] = posterior[s]*backward[s]/norm;
-			}
-		}
-	}
-
-	/* normalizing new_trans matrix */
-	for (int c = 0; c < k; ++c){
-		MatrixRow<REALSXP> row = new_trans.row(c);
-		row = row/sum(row);
-	}
-	
-	return List::create(_("posteriors")=posteriors, _("tot_llik")=tot_llik, _("new_trans")=new_trans);
+List forward_backward(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, IntegerVector seqlens, int nthreads=1){
+	NumericMatrix posteriors(lliks.nrow(), lliks.ncol());
+	NumericMatrix newTrans(trans.nrow(), trans.ncol());
+	double tot_llik = forward_backward_core(asVec<double>(initP), asMat<double>(trans), asMat<double>(lliks), asVec<int>(seqlens), asMat<double>(posteriors), asMat<double>(newTrans), nthreads);
+	return List::create(_("posteriors")=posteriors, _("tot_llik")=tot_llik, _("new_trans")=newTrans);
 }
 
 //' Viterbi algorithm
