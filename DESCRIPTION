@@ -1,0 +1,19 @@
+Package: kfoots
+Type: Package
+Title: Model multivariate count data with a mixture model
+Version: 1.0
+Date: 2013-10-22
+Author: Alessandro Mammana
+Maintainer: Alessandro Mammana <mammana@molgen.mpg.de>
+Description: The package provides methods for fitting multivariate count data
+    with a mixture model. Each mixture component is a negative multivariate
+    random variable and an EM algorithm is used to maximize the likelihood.
+License: GNU general public license
+Depends:
+    Rcpp (>= 0.10.5)
+LinkingTo: Rcpp
+Collate:
+    'RcppExports.R'
+    'kfoots.R'
+    'hmmfoots.R'
+    'parameters_plotting.R'

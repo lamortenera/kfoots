@@ -1,0 +1,27 @@
+\name{viterbi}
+\alias{viterbi}
+\title{Viterbi algorithm}
+\usage{
+  viterbi(initP, trans, lliks, seqlens)
+}
+\arguments{
+  \item{initP}{vector of initial probabilities}
+
+  \item{trans}{transition matrix (rows are previous state,
+  columns are next state)}
+
+  \item{lliks}{matrix with emission probabilities for each
+  datapoint and each state. Columns are datapoints and rows
+  are states.}
+
+  \item{seqlens}{length of each subsequence of datapoints
+  (set this to ncol(lliks) if there is only one sequence).}
+}
+\value{
+  a list with the following arguments: \item{vpath}{viterbi
+  path} \item{vllik}{log-likelihood of the viterbi path}
+}
+\description{
+  Standard viterbi algorithm in the log space
+}
+

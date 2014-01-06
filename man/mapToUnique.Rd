@@ -1,0 +1,19 @@
+\name{mapToUnique}
+\alias{mapToUnique}
+\title{Group unique values of a vector}
+\usage{
+  mapToUnique(values)
+}
+\arguments{
+  \item{v}{a vector of integers. If they are not integers
+  they will be casted to integers.}
+}
+\value{
+  a list with the following items: \item{values}{unique and
+  sorted values of \code{v}} \item{map}{a vector such that
+  \code{v[i] = values[map[i]+1]} for every i}
+}
+\description{
+  Group unique values of a vector
+}
+
