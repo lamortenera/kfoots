@@ -1,8 +1,27 @@
 #include <omp.h>
 #include <algorithm> 
+#include <unordered_map>
 #include <Rcpp.h>
-#include <boost/unordered_map.hpp>
 
+
+//Matrix and vector wrappers for pointers
+template<typename TType>
+struct Vec {
+	TType* ptr;
+	int len;
+	
+	Vec(){}
+	
+	Vec(TType* _ptr, int _len):
+		ptr(_ptr), len(_len){}
+	
+	inline TType operator[] (int i) const {return ptr[i];}
+	inline TType& operator[] (int i){return ptr[i];}
+	
+	Vec subset(int start, int end){
+		return Vec(ptr + start, end - start);
+	}
+};
 
 template<typename TType>
 struct Mat {
@@ -36,23 +55,6 @@ struct Mat {
 };
 
 
-template<typename TType>
-struct Vec {
-	TType* ptr;
-	int len;
-	
-	Vec(){}
-	
-	Vec(TType* _ptr, int _len):
-		ptr(_ptr), len(_len){}
-	
-	inline TType operator[] (int i) const {return ptr[i];}
-	inline TType& operator[] (int i){return ptr[i];}
-	
-	Vec subset(int start, int end){
-		return Vec(ptr + start, end - start);
-	}
-};
 
 
 template<typename TNumMat, typename TNumVec>
@@ -101,7 +103,7 @@ inline Mat<TType> asMat(std::vector<TType>& v, int ncol){
 
 
 struct CachedLFact{
-	boost::unordered_map<int, double> cache;
+	std::unordered_map<int, double> cache;
 	CachedLFact(double load_factor){
 		cache.max_load_factor(load_factor);
 	}
@@ -419,6 +421,8 @@ static inline double  forward_backward_core(Vec<double> initP, Mat<double> trans
 	//temporary objects 
 	std::vector<int> chunk_startsSTD(seqlens.len, 0);
 	Vec<int> chunk_starts = asVec<int>(chunk_startsSTD);
+	//get the start of each chunk
+	for (int i = 0, acc = 0; i < nchunk; ++i){chunk_starts[i] = acc; acc += seqlens[i];}
 	
 	/* transform the lliks matrix to the original space (exponentiate). 
 	 * A column-specific factor is multiplied to obtain a better numerical
@@ -440,13 +444,11 @@ static inline double  forward_backward_core(Vec<double> initP, Mat<double> trans
 		}
 	}
 	
-	//get the start of each chunk
-	for (int i = 0, acc = 0; i < nchunk; ++i){chunk_starts[i] = acc; acc += seqlens[i];}
 	
 	/* Do forward and backward loop for each chunk (defined by seqlens) */
 	#pragma omp parallel default(none) \
 	firstprivate(lliks, posteriors, seqlens, chunk_starts, trans, initP, nrow, ncol, nchunk) \
-	shared(tot_llik, new_trans, std::cout)  num_threads(nthreads)
+	shared(tot_llik, new_trans)  num_threads(nthreads)
 	{
 		//each thread gets one copy of these temporaries
 		std::vector<double> tmpSTD(nrow*nrow, 0); 

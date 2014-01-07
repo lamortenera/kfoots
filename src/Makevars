@@ -1,7 +1,7 @@
 ## Use the R_HOME indirection to support installations of multiple R version
-PKG_LIBS = `$(R_HOME)/bin/Rscript -e "Rcpp:::LdFlags()"` -L/project/ale/home/src/boost_1_55_0/stage/lib  -lboost_math_c99 -lboost_math_tr1 -fopenmp -lgomp
+PKG_LIBS = `$(R_HOME)/bin/Rscript -e "Rcpp:::LdFlags()"` -fopenmp -lgomp
 
-PKG_CPPFLAGS = -I/project/ale/home/src/boost_1_55_0  -fopenmp
+PKG_CPPFLAGS = -std=c++11 -fopenmp
 
 ## As an alternative, one can also add this code in a file 'configure'
 ##
