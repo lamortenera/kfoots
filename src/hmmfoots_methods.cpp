@@ -25,10 +25,14 @@ typedef IntegerVector::iterator iiter;
 //'	\item{new_trans}{update for the transition probabilities (it is already normalized)}
 //' @export
 // [[Rcpp::export]]
-List forward_backward(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, IntegerVector seqlens, int nthreads=1){
-	NumericMatrix posteriors(lliks.nrow(), lliks.ncol());
+List forward_backward(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, IntegerVector seqlens, SEXP posteriors=R_NilValue, int nthreads=1){
+	if (Rf_isNull(posteriors)){
+		posteriors = Rcpp::NumericMatrix(lliks.nrow(), lliks.ncol());
+	}
+	Rcpp::NumericMatrix tposteriors(posteriors);
+	
 	NumericMatrix newTrans(trans.nrow(), trans.ncol());
-	double tot_llik = forward_backward_core(asVec<double>(initP), asMat<double>(trans), asMat<double>(lliks), asVec<int>(seqlens), asMat<double>(posteriors), asMat<double>(newTrans), nthreads);
+	double tot_llik = forward_backward_core(asVec<double>(initP), asMat<double>(trans), asMat<double>(lliks), asVec<int>(seqlens), asMat<double>(tposteriors), asMat<double>(newTrans), nthreads);
 	return List::create(_("posteriors")=posteriors, _("tot_llik")=tot_llik, _("new_trans")=newTrans);
 }
 

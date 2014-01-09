@@ -6,8 +6,8 @@
 using namespace Rcpp;
 
 // forward_backward
-List forward_backward(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, IntegerVector seqlens, int nthreads = 1);
-RcppExport SEXP kfoots_forward_backward(SEXP initPSEXP, SEXP transSEXP, SEXP lliksSEXP, SEXP seqlensSEXP, SEXP nthreadsSEXP) {
+List forward_backward(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, IntegerVector seqlens, SEXP posteriors = R_NilValue, int nthreads = 1);
+RcppExport SEXP kfoots_forward_backward(SEXP initPSEXP, SEXP transSEXP, SEXP lliksSEXP, SEXP seqlensSEXP, SEXP posteriorsSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
@@ -16,8 +16,9 @@ BEGIN_RCPP
         Rcpp::traits::input_parameter< NumericMatrix >::type trans(transSEXP );
         Rcpp::traits::input_parameter< NumericMatrix >::type lliks(lliksSEXP );
         Rcpp::traits::input_parameter< IntegerVector >::type seqlens(seqlensSEXP );
+        Rcpp::traits::input_parameter< SEXP >::type posteriors(posteriorsSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        List __result = forward_backward(initP, trans, lliks, seqlens, nthreads);
+        List __result = forward_backward(initP, trans, lliks, seqlens, posteriors, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);
@@ -43,15 +44,17 @@ BEGIN_RCPP
 END_RCPP
 }
 // llik2posteriors
-Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, int nthreads = 1);
-RcppExport SEXP kfoots_llik2posteriors(SEXP lliksSEXP, SEXP nthreadsSEXP) {
+Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector lmixcoeff, SEXP posteriors = R_NilValue, int nthreads = 1);
+RcppExport SEXP kfoots_llik2posteriors(SEXP lliksSEXP, SEXP lmixcoeffSEXP, SEXP posteriorsSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
         Rcpp::RNGScope __rngScope;
         Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type lliks(lliksSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type lmixcoeff(lmixcoeffSEXP );
+        Rcpp::traits::input_parameter< SEXP >::type posteriors(posteriorsSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        Rcpp::List __result = llik2posteriors(lliks, nthreads);
+        Rcpp::List __result = llik2posteriors(lliks, lmixcoeff, posteriors, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);
@@ -213,8 +216,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // lLikMat
-Rcpp::NumericMatrix lLikMat(Rcpp::IntegerMatrix counts, Rcpp::List models, SEXP ucs = R_NilValue, SEXP mConst = R_NilValue, int nthreads = 1);
-RcppExport SEXP kfoots_lLikMat(SEXP countsSEXP, SEXP modelsSEXP, SEXP ucsSEXP, SEXP mConstSEXP, SEXP nthreadsSEXP) {
+Rcpp::NumericMatrix lLikMat(Rcpp::IntegerMatrix counts, Rcpp::List models, SEXP ucs = R_NilValue, SEXP mConst = R_NilValue, SEXP lliks = R_NilValue, int nthreads = 1);
+RcppExport SEXP kfoots_lLikMat(SEXP countsSEXP, SEXP modelsSEXP, SEXP ucsSEXP, SEXP mConstSEXP, SEXP lliksSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
@@ -223,8 +226,9 @@ BEGIN_RCPP
         Rcpp::traits::input_parameter< Rcpp::List >::type models(modelsSEXP );
         Rcpp::traits::input_parameter< SEXP >::type ucs(ucsSEXP );
         Rcpp::traits::input_parameter< SEXP >::type mConst(mConstSEXP );
+        Rcpp::traits::input_parameter< SEXP >::type lliks(lliksSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        Rcpp::NumericMatrix __result = lLikMat(counts, models, ucs, mConst, nthreads);
+        Rcpp::NumericMatrix __result = lLikMat(counts, models, ucs, mConst, lliks, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);

@@ -67,17 +67,21 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 		stop("invalid value for seqlens, the chunks sum up to more than the total input length")
 	}
 	
+	#allocating memory
+	posteriors <- matrix(0, nrow=k, ncol=nloci)
+	lliks <- matrix(0, nrow=k, ncol=nloci)
+	
+	
 	loglik <- NA
 	converged <- FALSE
 	llhistory <- numeric(maxiter)
 	if (verbose) cat("starting main loop\n")
 	for (iter in 1:maxiter){
-		lliks <- lLikMat(counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)
+		lLikMat(lliks=lliks, counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)
 
 		initP <- getSteadyState(trans)
 
-		res <- forward_backward(initP, trans, lliks, seqlens, nthreads=nthreads)
-		posteriors <- res$posteriors
+		res <- forward_backward(posteriors=posteriors, initP, trans, lliks, seqlens, nthreads=nthreads)
 		new_loglik <- res$tot_llik
 		new_trans <- res$new_trans
 

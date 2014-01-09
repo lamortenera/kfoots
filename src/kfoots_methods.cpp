@@ -3,9 +3,14 @@
 #include "core.hpp"
 
 // [[Rcpp::export]]
-Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, int nthreads=1){
-	Rcpp::NumericMatrix posteriors(lliks.nrow(), lliks.ncol());
-	double tot = llik2posteriors_core(asMat<double>(lliks), asMat<double>(posteriors), nthreads);
+Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector lmixcoeff, SEXP posteriors=R_NilValue, int nthreads=1){
+	if (Rf_isNull(posteriors)){
+		posteriors = Rcpp::NumericMatrix(lliks.nrow(), lliks.ncol());
+	}
+	
+	Rcpp::NumericMatrix tposteriors(posteriors);
+	
+	double tot = llik2posteriors_core(asMat<double>(lliks), asVec<double>(lmixcoeff), asMat<double>(tposteriors), nthreads);
 	
 	return Rcpp::List::create(Rcpp::Named("posteriors")=posteriors, Rcpp::Named("tot_llik")=tot);
 }
@@ -155,6 +160,7 @@ Rcpp::NumericVector lLik(Rcpp::IntegerMatrix counts, Rcpp::List model,
 Rcpp::NumericMatrix lLikMat(Rcpp::IntegerMatrix counts, Rcpp::List models, 
 		SEXP ucs = R_NilValue,
 		SEXP mConst = R_NilValue,
+		SEXP lliks = R_NilValue,
 		int nthreads=1){
 	
 	//parse or compute preprocessing data
@@ -185,9 +191,12 @@ Rcpp::NumericMatrix lLikMat(Rcpp::IntegerMatrix counts, Rcpp::List models,
 	//allocating some temporary memory
 	std::vector<double> tmpNB(uniqueCS.length()*nmodels);
 	//allocating return variable
-	Rcpp::NumericMatrix lliks(nmodels, countsMat.ncol);
+	if (Rf_isNull(lliks)){
+		lliks = Rcpp::NumericMatrix(nmodels, countsMat.ncol);
+	}
+	Rcpp::NumericMatrix tlliks(lliks);
 	
-	lLikMat_core(countsMat, mus, rs, ps, asMat<double>(lliks), preproc, asMat(tmpNB, uniqueCS.length()), nthreads);
+	lLikMat_core(countsMat, mus, rs, ps, asMat<double>(tlliks), preproc, asMat(tmpNB, uniqueCS.length()), nthreads);
 	
 	return lliks;
 }

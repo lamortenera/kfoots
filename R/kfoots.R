@@ -138,16 +138,18 @@ kfoots_core <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthr
 	if (is.null(mix_coeff)){
 		mix_coeff = rep(1/k, k)
 	}
+	
+	#allocating memory
 	posteriors <- matrix(0, nrow=k, ncol=nloci)
+	lliks <- matrix(0, nrow=k, ncol=nloci)
 	
 	loglik <- NA
 	converged <- FALSE
 	llhistory <- numeric(maxiter)
 	for (iter in 1:maxiter){
-		lliks <- lLikMat(counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)  + log(mix_coeff)
+		lLikMat(lliks=lliks, counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)
 		
-		res <- llik2posteriors(lliks, nthreads=nthreads)
-		posteriors <- res$posteriors
+		res <- llik2posteriors(posteriors=posteriors, lliks, log(mix_coeff), nthreads=nthreads)
 		new_loglik <- res$tot_llik
 		
 		if (verbose){

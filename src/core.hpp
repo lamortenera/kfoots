@@ -382,29 +382,38 @@ static inline void fitMultinom_core(Mat<int> counts, Vec<double> posteriors, Vec
 	for (int row = 0; row < nrow; ++row){fit[row] /= sum;}
 }
 
-static inline double llik2posteriors_core(Mat<double> lliks, Mat<double> posteriors, int nthreads){
+static inline double llik2posteriors_core(Mat<double> lliks, Vec<double> lmixcoeff, Mat<double> posteriors, int nthreads){
 	long double tot = 0;
-	double* i_lliks = lliks.ptr;
-	double* i_post = posteriors.ptr;
 	int ncol = lliks.ncol;
 	int nrow = lliks.nrow;
 	
-	#pragma omp parallel for default(none) firstprivate(i_lliks, i_post, ncol, nrow) reduction(+:tot) num_threads(std::max(1, nthreads))
+	#pragma omp parallel for reduction(+:tot) num_threads(std::max(1, nthreads))
 	for (int col = 0; col < ncol; ++col){
-		double* i_llliks = i_lliks + col*nrow;
-		double* i_ppost = i_post + col*nrow;
-		double cmax = i_llliks[0];
-		for (int row = 1; row < nrow; ++row){ if (i_llliks[row] > cmax) { cmax = i_llliks[row]; } }
+		double* lliksCol = lliks.colptr(col);
+		double* postCol = posteriors.colptr(col);
+		//adding the mixing coefficients
+		for (int row = 0; row < nrow; ++row){
+			lliksCol[row] += lmixcoeff[row];
+		}
+		//getting maximum
+		double cmax = lliksCol[0];
+		for (int row = 1; row < nrow; ++row){
+			if (lliksCol[row] > cmax) {
+				cmax = lliksCol[row];
+			} 
+		}
 		tot += cmax;
 		double psum = 0;
+		//subtracting maximum and exponentiating sumultaneously
 		for (int row = 0; row < nrow; ++row){
-			double tmp = exp(i_llliks[row] - cmax);
-			i_ppost[row] = tmp;
+			double tmp = exp(lliksCol[row] - cmax);
+			postCol[row] = tmp;
 			psum += tmp;
 		}
 		tot += log(psum);
-		for (int row = 0; row < nrow; ++row, ++i_ppost){
-			*i_ppost = *i_ppost/psum;
+		double* postCol_it = postCol;
+		for (int row = 0; row < nrow; ++row, ++postCol_it){
+			*postCol_it /= psum;
 		}
 	}
 	

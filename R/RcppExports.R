@@ -19,8 +19,8 @@
 #'	\item{tot_llik}{total log-likelihood of the data given the hmm model}
 #'	\item{new_trans}{update for the transition probabilities (it is already normalized)}
 #' @export
-forward_backward <- function(initP, trans, lliks, seqlens, nthreads = 1L) {
-    .Call('kfoots_forward_backward', PACKAGE = 'kfoots', initP, trans, lliks, seqlens, nthreads)
+forward_backward <- function(initP, trans, lliks, seqlens, posteriors = NULL, nthreads = 1L) {
+    .Call('kfoots_forward_backward', PACKAGE = 'kfoots', initP, trans, lliks, seqlens, posteriors, nthreads)
 }
 
 #' Viterbi algorithm
@@ -40,8 +40,8 @@ viterbi <- function(initP, trans, lliks, seqlens) {
     .Call('kfoots_viterbi', PACKAGE = 'kfoots', initP, trans, lliks, seqlens)
 }
 
-llik2posteriors <- function(lliks, nthreads = 1L) {
-    .Call('kfoots_llik2posteriors', PACKAGE = 'kfoots', lliks, nthreads)
+llik2posteriors <- function(lliks, lmixcoeff, posteriors = NULL, nthreads = 1L) {
+    .Call('kfoots_llik2posteriors', PACKAGE = 'kfoots', lliks, lmixcoeff, posteriors, nthreads)
 }
 
 #' Group unique values of a vector
@@ -88,7 +88,7 @@ lLik <- function(counts, model, ucs = NULL, mConst = NULL, nthreads = 1L) {
     .Call('kfoots_lLik', PACKAGE = 'kfoots', counts, model, ucs, mConst, nthreads)
 }
 
-lLikMat <- function(counts, models, ucs = NULL, mConst = NULL, nthreads = 1L) {
-    .Call('kfoots_lLikMat', PACKAGE = 'kfoots', counts, models, ucs, mConst, nthreads)
+lLikMat <- function(counts, models, ucs = NULL, mConst = NULL, lliks = NULL, nthreads = 1L) {
+    .Call('kfoots_lLikMat', PACKAGE = 'kfoots', counts, models, ucs, mConst, lliks, nthreads)
 }
 
