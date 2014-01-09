@@ -491,13 +491,13 @@ static inline double  forward_backward_core(Vec<double> initP, Mat<double> trans
 			
 				for (int t = 0; t < nrow; ++t){
 					double* transcol = trans.colptr(t);
-					double eprob = emissprob[t];
 					double acc = 0;
 					for (int s = 0; s < nrow; ++s){
-						acc += last_forward[s]*transcol[s]*eprob;
+						acc += last_forward[s]*transcol[s];
 					}
+					acc *= emissprob[t];
 					forward[t] = acc;
-					cf += forward[t];
+					cf += acc;
 				}
 				for (int t = 0; t < nrow; ++t){
 					forward[t] = forward[t]/cf;
