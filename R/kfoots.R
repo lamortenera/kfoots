@@ -220,17 +220,15 @@ getUniqueSeeds <- function(counts, k){
 	shuffle <- sample(ncol(counts), ncol(counts))
 	if (k==1)
 		return(shuffle[1])
-	invert_shuffle <- (1:ncol(counts))[shuffle]
-	counts <- counts[, shuffle]
 		
-	#increase the size of the sorted matrix by 2 every time
+	#duplicate the size of the sorted matrix every time
 	old_size <- 0
 	size <- k
 	unique_cols <- c()
 	
 	while (old_size < ncol(counts)){
 		#concatenate the old ones with the new ones
-		newcols <- (old_size+1):size
+		newcols <- shuffle[(old_size+1):size]
 		new_unique_cols <- newcols[uniqueColumns(counts[,newcols])]
 		unique_cols <- c(unique_cols, new_unique_cols)
 		#check if there are duplicates (merge the two sets)
@@ -238,7 +236,7 @@ getUniqueSeeds <- function(counts, k){
 			unique_cols <- unique_cols[uniqueColumns(counts[,unique_cols])]
 		
 		if (length(unique_cols)>=k)
-			return (invert_shuffle[unique_cols[1:k]])
+			return (unique_cols[1:k])
 		
 		old_size <- size
 		size <- min(2*size, ncol(counts))
@@ -247,15 +245,16 @@ getUniqueSeeds <- function(counts, k){
 }
 
 #return indices of first occurrences of all unique columns in the matrix
-#(it's a bit faster than duplicated(counts, MARGIN=2) but it does the same)
+#(it's 15 times faster than duplicated(counts, MARGIN=2) but it does the same)
 uniqueColumns <- function(counts){
 	nc <- ncol(counts)
+	nr <- nrow(counts)
 	#lexicographic sorting of the columns (loci)
-	o <- do.call(order, as.list(as.data.frame(t(counts))))
+	o <- orderColumns(counts)
 	io <- (1:length(o))[o]
 	counts <- counts[,o]
 	#identify runs of identical columns
-	d <- .colSums(abs(counts - counts[, c(1, 1:(nc-1))]), nrow(counts), nc)>0
+	d <- .colSums(abs(counts - counts[, c(1, 1:(nc-1))]), nr, nc)>0
 	d[1] <- TRUE
 	#get leading indexes positions
 	io[(1:nc)[d]]

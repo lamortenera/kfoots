@@ -43,6 +43,21 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
+// orderColumns
+Rcpp::IntegerVector orderColumns(Rcpp::IntegerMatrix mat);
+RcppExport SEXP kfoots_orderColumns(SEXP matSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type mat(matSEXP );
+        Rcpp::IntegerVector __result = orderColumns(mat);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
 // llik2posteriors
 Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector lmixcoeff, SEXP posteriors = R_NilValue, int nthreads = 1);
 RcppExport SEXP kfoots_llik2posteriors(SEXP lliksSEXP, SEXP lmixcoeffSEXP, SEXP posteriorsSEXP, SEXP nthreadsSEXP) {

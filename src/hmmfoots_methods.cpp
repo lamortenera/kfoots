@@ -110,3 +110,11 @@ List viterbi(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, Nume
 	}
 	return List::create(_("vpath")=vpath, _("vllik")=tot_maxscore);
 }
+
+
+// [[Rcpp::export]]
+Rcpp::IntegerVector orderColumns(Rcpp::IntegerMatrix mat){
+	Rcpp::IntegerVector order(mat.ncol());
+	orderColumns_core(asMat<int>(mat), asVec<int>(order));
+	return order;
+}

@@ -40,6 +40,10 @@ viterbi <- function(initP, trans, lliks, seqlens) {
     .Call('kfoots_viterbi', PACKAGE = 'kfoots', initP, trans, lliks, seqlens)
 }
 
+orderColumns <- function(mat) {
+    .Call('kfoots_orderColumns', PACKAGE = 'kfoots', mat)
+}
+
 llik2posteriors <- function(lliks, lmixcoeff, posteriors = NULL, nthreads = 1L) {
     .Call('kfoots_llik2posteriors', PACKAGE = 'kfoots', lliks, lmixcoeff, posteriors, nthreads)
 }

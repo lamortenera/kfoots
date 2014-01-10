@@ -575,3 +575,40 @@ static inline double  forward_backward_core(Vec<double> initP, Mat<double> trans
 	
 	return (double) tot_llik;
 }
+
+
+struct colPtr {
+	int* ptr;
+	int colref;
+	colPtr(int* _ptr, int _colref): ptr(_ptr), colref(_colref){}
+};
+
+struct colSorter{
+	int nrow;
+	
+	inline bool operator() (const colPtr& cp1, const colPtr& cp2) {
+		int* ptr1 = cp1.ptr;
+		int* ptr2 = cp2.ptr;
+		
+		for (int i = 0; i < nrow; ++i){
+			int diff = ptr2[i] - ptr1[i];
+			if (diff!=0){
+				return diff > 0;
+			}
+		}
+		
+		return false;
+	}
+	
+	colSorter(int _nrow) : nrow(_nrow){}
+};
+
+static inline void orderColumns_core(Mat<int> mat, Vec<int> vec){
+	int nc = mat.ncol;
+	colSorter srtr(mat.nrow);
+	colPtr foo(0,0);
+	std::vector<colPtr> cols(nc, foo);
+	for (int i = 0; i < nc; ++i){cols[i] = colPtr(mat.colptr(i), i);}
+	std::sort(cols.begin(), cols.end(), srtr);
+	for (int i = 0; i < nc; ++i){vec[i] = cols[i].colref+1;}
+}
