@@ -106,7 +106,7 @@ kfoots <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
 #'		\item{llhistory}{time series containing the log-likelihood of the
 #'			whole dataset across iterations}
 #' @export
-kfoots_core <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=1, verbose=FALSE){
+kfoots_core <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=1, addnoise=FALSE, verbose=FALSE){
 	if (!is.matrix(counts))
 		stop("invalid counts variable provided. It must be a matrix")
 	#this will ensure efficiency of certain methods.
@@ -134,6 +134,11 @@ kfoots_core <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthr
 		#get initial random models. Need to be kind-of similar to
 		#the count matrix, cannot be completely random
 		models = rndModels(counts, k, bgr_prior=0.5, ucs=ucs)
+		if (addnoise){
+			#add a noise model
+			models[[1]]$tag <- "noise"
+			models[[1]]$ps <- rep(1/nrow(counts), nrow(counts))
+		}
 	}
 	if (is.null(mix_coeff)){
 		mix_coeff = rep(1/k, k)
@@ -158,7 +163,11 @@ kfoots_core <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthr
 		
 		new_models <- list()
 		for (m in 1:k){
-			new_models[[m]] <- fitModel(counts, posteriors[m,], models[[m]]$r, ucs=ucs, nthreads=nthreads)
+			if (!is.null(models[[m]]$tag) && models[[m]]$tag == "noise"){
+				new_models[[m]] <- fitNoiseModel(counts, posteriors[m,], models[[m]]$r, ucs=ucs, nthreads=nthreads)
+			} else {
+				new_models[[m]] <- fitModel(counts, posteriors[m,], models[[m]]$r, ucs=ucs, nthreads=nthreads)
+			}
 		}
 		if(iter!=1 && new_loglik < loglik && !compare(new_loglik, loglik, tol))
 			warning(paste0("decrease in log-likelihood at iteration ",iter))
@@ -281,6 +290,27 @@ fitModel <- function(counts, posteriors=NULL, old_r=NULL, maxit=100, ucs=NULL, n
 		
 	res <- fitNB(ucs, posteriors=posteriors, old_r=old_r, maxit=maxit)
 	res$ps <- ps
+	
+	res
+}
+
+#same as before but no fitting is done for the ps variables
+fitNoiseModel <- function(counts, posteriors=NULL, old_r=NULL, maxit=100, ucs=NULL, nthreads=1){
+	if (is.null(posteriors))
+		posteriors <- rep(1.0, ncol(counts))
+	
+	#noise model, ps are uniform
+	nr <- nrow(counts)
+	ps <- rep(1/nr, nr)
+	
+	#fitting the negative binomial
+	#if ucs is provided, no need to compute colSums
+	if (is.null(ucs))
+		ucs <- mapToUnique(colSumsInt(counts, nthreads))
+		
+	res <- fitNB(ucs, posteriors=posteriors, old_r=old_r, maxit=maxit)
+	res$ps <- ps
+	res$tag <- "noise"
 	
 	res
 }
