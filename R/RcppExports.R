@@ -96,3 +96,7 @@ lLikMat <- function(counts, models, ucs = NULL, mConst = NULL, lliks = NULL, nth
     .Call('kfoots_lLikMat', PACKAGE = 'kfoots', counts, models, ucs, mConst, lliks, nthreads)
 }
 
+pwhichmax <- function(posteriors, nthreads = 1L) {
+    .Call('kfoots_pwhichmax', PACKAGE = 'kfoots', posteriors, nthreads)
+}
+

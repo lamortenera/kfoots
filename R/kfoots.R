@@ -195,27 +195,31 @@ kfoots_core <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthr
 	for (model in models)
 		names(model$ps) <- rownames(counts)
 	
+	#same as: clusters <- apply(posteriors, 2, which.max)
+	#parallelization is probably overkill for this function...
+	clusters <- pwhichmax(posteriors, nthreads=nthreads)
+	
 	list(models=models, mix_coeff=mix_coeff, loglik = loglik,
-	posteriors=posteriors, converged = converged, llhistory=llhistory[1:iter])
+	posteriors=posteriors, clusters=clusters, converged = converged, llhistory=llhistory[1:iter])
 }
 
 
 #to be parallelized, or avoid iteration through the whole matrix
-rndModels <- function(counts, k, bgr_prior=0.5, ucs=NULL){
+rndModels <- function(counts, k, bgr_prior=0.5, ucs=NULL, nthreads=1){
 	seeds <- getUniqueSeeds(counts, k)
-	modelsFromSeeds(counts, seeds, bgr_prior=bgr_prior, ucs=ucs)
+	modelsFromSeeds(counts, seeds, bgr_prior=bgr_prior, ucs=ucs, nthreads=nthreads)
 }
 
 #seeds are columns of the count matrix which are guaranteed to be distinct.
 #they are used to initialize the models
-modelsFromSeeds <- function(counts, seeds, bgr_prior=0.5, ucs=NULL){
+modelsFromSeeds <- function(counts, seeds, bgr_prior=0.5, ucs=NULL, nthreads=1){
 	models = list()
 	bgr = rep(1, ncol(counts))
 	for (i in seq_along(seeds)){
 		posteriors = bgr
 		posteriors[seeds[i]] = bgr[seeds[i]] + 1-bgr_prior
 		
-		models[[i]] = fitModel(counts, posteriors, ucs=ucs) 
+		models[[i]] = fitModel(counts, posteriors, ucs=ucs, nthreads=nthreads) 
 	}
 	
 	models

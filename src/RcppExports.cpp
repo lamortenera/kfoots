@@ -250,3 +250,19 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
+// pwhichmax
+Rcpp::IntegerVector pwhichmax(Rcpp::NumericMatrix posteriors, int nthreads = 1);
+RcppExport SEXP kfoots_pwhichmax(SEXP posteriorsSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type posteriors(posteriorsSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::IntegerVector __result = pwhichmax(posteriors, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}

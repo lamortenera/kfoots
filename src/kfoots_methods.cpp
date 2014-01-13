@@ -201,3 +201,9 @@ Rcpp::NumericMatrix lLikMat(Rcpp::IntegerMatrix counts, Rcpp::List models,
 	return lliks;
 }
 
+// [[Rcpp::export]]
+Rcpp::IntegerVector pwhichmax(Rcpp::NumericMatrix posteriors, int nthreads=1){
+	Rcpp::IntegerVector clusters(posteriors.ncol());
+	pwhichmax_core(asMat<double>(posteriors), asVec<int>(clusters), nthreads);
+	return clusters;
+}

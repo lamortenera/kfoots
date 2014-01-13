@@ -612,3 +612,22 @@ static inline void orderColumns_core(Mat<int> mat, Vec<int> vec){
 	std::sort(cols.begin(), cols.end(), srtr);
 	for (int i = 0; i < nc; ++i){vec[i] = cols[i].colref+1;}
 }
+
+static inline void pwhichmax_core(Mat<double> posteriors, Vec<int> clusters, int nthreads){
+	int ncol = posteriors.ncol;
+	int nrow = posteriors.nrow;
+	#pragma omp parallel for num_threads(nthreads)
+	for (int col = 0; col < ncol; ++col){
+		double* postCol = posteriors.colptr(col);
+		double max = *postCol;
+		int whichmax = 1;
+		for (int row = 1; row < nrow; ++row){
+			++postCol;
+			if (*postCol > max){
+				max = *postCol;
+				whichmax = row + 1;
+			}
+		}
+		clusters[col] = whichmax;
+	}
+}
