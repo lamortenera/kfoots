@@ -133,7 +133,7 @@ kfoots_core <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthr
 	if (is.null(models)){
 		#get initial random models. Need to be kind-of similar to
 		#the count matrix, cannot be completely random
-		models = rndModels(counts, k, bgr_prior=0.5, ucs=ucs)
+		models = rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nthreads=nthreads)
 		if (addnoise){
 			#add a noise model
 			models[[1]]$tag <- "noise"

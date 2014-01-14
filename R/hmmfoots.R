@@ -54,7 +54,7 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 	if (is.null(models)){
 		#get initial random models. Need to be kind-of similar to
 		#the count matrix, cannot be completely random
-		models = rndModels(counts, k, bgr_prior=0.5, ucs=ucs)
+		models = rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nthreads=nthreads)
 	}
 	if (is.na(trans)){
 		trans <- matrix(rep(1/k, k*k), ncol=k)
