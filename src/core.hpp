@@ -191,16 +191,6 @@ static inline void nbinomLoglik_core(Vec<int> counts, double mu, double r, Vec<d
 	}
 }
 
-static inline void nbinomLoglikMat_core(Vec<int> counts, Vec<double> mus, Vec<double> rs, Mat<double> lliks, int nthreads){
-	int ncounts = counts.len;
-	int nparam = mus.len;
-	#pragma omp parallel for num_threads(nthreads) collapse(2)
-	for (int p = 0; p < nparam; ++p){
-		for (int c = 0; c < ncounts; ++c){
-			lliks(p,c) = Rf_dnbinom_mu(counts[c], rs[p], mus[p], 1);
-		}
-	}
-}
 
 static inline double optimFun_core(Vec<int> counts, double mu, double r, Vec<double> posteriors, int nthreads){
 	int e = counts.len;
@@ -293,50 +283,63 @@ static void lLikMat_core(Mat<int> counts, Vec<double> mus, Vec<double> rs, Mat<d
 	if (counts.ncol != preproc.map.len) throw std::invalid_argument("the preprocessed data were not computed on the same count matrix");
 	
 	
-	
 	nthreads = std::max(1, nthreads);
 	int nmodels = mus.len;
-	int footlen = counts.nrow;
-	//compute all the log neg binom on the unique column sums
-	nbinomLoglikMat_core(preproc.uniqueCS, mus, rs, tmpNB, nthreads);
-	
-	//pre-compute all the log(p) 
-	std::vector<double> logPsSTD(footlen*nmodels);
-	Mat<double> logPs = asMat(logPsSTD, nmodels);
-	for (int i = 0, e = footlen*nmodels; i < e; ++i){
-		logPs[i] = log(ps[i]);
-	}
-	
-	//iterate through each column
-	int* map = preproc.map.ptr;
 	int ncol = counts.ncol;
 	int nrow = counts.nrow;
+	int nUCS = preproc.uniqueCS.len;
+	int logPsSize = nrow*nmodels;
+	int* uniqueCS = preproc.uniqueCS.ptr;
+	int* map = preproc.map.ptr;
 	double* mtnmConst = preproc.multinomConst.ptr;
+	std::vector<double> logPsSTD(nrow*nmodels);
+	Mat<double> logPs = asMat(logPsSTD, nmodels);
 	
-			
-	#pragma omp parallel for num_threads(nthreads)
-	for (int col = 0; col < ncol; ++col){
-		int* countsCol = counts.colptr(col);;
-		double* llikCol = llik.colptr(col);
-		double mtnm = mtnmConst[col];
-		double* tmpNBcol = tmpNB.colptr(map[col]);
-		
-		for (int mod = 0; mod < nmodels; ++mod){
-			double tmp = tmpNBcol[mod] + mtnm;
-			double* logp = logPs.colptr(mod);
-			for (int row = 0; row < nrow; ++row){
-				double ttemp = countsCol[row]*logp[row];
-				if (!std::isnan(ttemp)){
-					tmp += ttemp;
-				}
+	
+	#pragma omp parallel num_threads(nthreads)
+	{
+		//compute all the log neg binom on the unique column sums
+		//Here the outer loop is on the models because I think it divides the
+		//computation more evenly (even if we need to collapse): uniqueCS
+		//is sorted...
+		#pragma omp for schedule(static) collapse(2) nowait
+		for (int p = 0; p < nmodels; ++p){
+			for (int c = 0; c < nUCS; ++c){
+				tmpNB(p,c) = Rf_dnbinom_mu(uniqueCS[c], rs[p], mus[p], 1);
 			}
-			llikCol[mod] = tmp;
+		}
+		
+		//pre-compute all the log(p)
+		#pragma omp for schedule(static) 
+		for (int i = 0; i < logPsSize; ++i){
+			logPs[i] = log(ps[i]);
+		}
+		
+		//compute and add contribution of the multinomial 
+		#pragma omp for schedule(static) 
+		for (int col = 0; col < ncol; ++col){
+			int* countsCol = counts.colptr(col);;
+			double* llikCol = llik.colptr(col);
+			double mtnm = mtnmConst[col];
+			double* tmpNBcol = tmpNB.colptr(map[col]);
+			
+			for (int mod = 0; mod < nmodels; ++mod){
+				double tmp = tmpNBcol[mod] + mtnm;
+				double* logp = logPs.colptr(mod);
+				for (int row = 0; row < nrow; ++row){
+					double ttemp = countsCol[row]*logp[row];
+					if (!std::isnan(ttemp)){
+						tmp += ttemp;
+					}
+				}
+				llikCol[mod] = tmp;
+			}
 		}
 	}
 }
 
 
-static inline void fitMultinom_core(Mat<int> counts, Vec<double> posteriors, Vec<double>(fit), int nthreads){
+static inline void fitMultinom_core(Mat<int> counts, Vec<double> posteriors, Vec<double> fit, int nthreads){
 	int* i_counts = counts.ptr;
 	double* i_post = posteriors.ptr;
 	double* i_fit = fit.ptr;
@@ -433,31 +436,10 @@ static inline double  forward_backward_core(Vec<double> initP, Mat<double> trans
 	//get the start of each chunk
 	for (int i = 0, acc = 0; i < nchunk; ++i){chunk_starts[i] = acc; acc += seqlens[i];}
 	
-	/* transform the lliks matrix to the original space (exponentiate). 
-	 * A column-specific factor is multiplied to obtain a better numerical
-	 * stability */
-	
 	long double tot_llik = 0;
-	#pragma omp parallel for default(none) firstprivate(lliks, nrow, ncol) reduction(+:tot_llik) num_threads(nthreads)
-	for (int c = 0; c < ncol; ++c){
-		double* llikcol = lliks.colptr(c);
-		/* get maximum llik in the column */
-		double max_llik = llikcol[0];
-		for (int r = 1; r < nrow; ++r){
-			if (llikcol[r] > max_llik){ max_llik = llikcol[r]; }
-		}
-		/* subtract maximum and exponentiate */
-		tot_llik += max_llik;
-		for (int r = 0; r < nrow; ++r, ++llikcol){
-			*llikcol = exp(*llikcol - max_llik);
-		}
-	}
 	
 	
-	/* Do forward and backward loop for each chunk (defined by seqlens) */
-	#pragma omp parallel default(none) \
-	firstprivate(lliks, posteriors, seqlens, chunk_starts, trans, initP, nrow, ncol, nchunk) \
-	shared(tot_llik, new_trans)  num_threads(nthreads)
+	#pragma omp parallel num_threads(nthreads)
 	{
 		//each thread gets one copy of these temporaries
 		std::vector<double> tmpSTD(nrow*nrow, 0); 
@@ -469,7 +451,26 @@ static inline double  forward_backward_core(Vec<double> initP, Mat<double> trans
 		Mat<double> tmp = asMat(tmpSTD, nrow);
 		Mat<double> thread_new_trans = asMat(thread_new_transSTD, nrow);
 		
+		/* transform the lliks matrix to the original space (exponentiate). 
+		 * A column-specific factor is multiplied to obtain a better numerical
+		 * stability */
+		#pragma omp for schedule(static) reduction(+:tot_llik)
+		for (int c = 0; c < ncol; ++c){
+			double* llikcol = lliks.colptr(c);
+			/* get maximum llik in the column */
+			double max_llik = llikcol[0];
+			for (int r = 1; r < nrow; ++r){
+				if (llikcol[r] > max_llik){ max_llik = llikcol[r]; }
+			}
+			/* subtract maximum and exponentiate */
+			tot_llik += max_llik;
+			for (int r = 0; r < nrow; ++r, ++llikcol){
+				*llikcol = exp(*llikcol - max_llik);
+			}
+		}
 		
+		/* Do forward and backward loop for each chunk (defined by seqlens)
+		 * Chunks might have very different lengths (that's why dynamic schedule). */
 		#pragma omp for schedule(dynamic,1) nowait
 		for (int o = 0; o < nchunk; ++o){
 			int chunk_start = chunk_starts[o];
@@ -563,10 +564,12 @@ static inline double  forward_backward_core(Vec<double> initP, Mat<double> trans
 				new_trans[p] += thread_new_trans[p];
 			}
 		}
-	
 	}
 
 	/* normalizing new_trans matrix */
+	// should I put it inside the parallel region?
+	// The code to generate the static schedule might be 
+	// slower than this loop....
 	for (int row = 0; row < nrow; ++row){
 		double sum = 0;
 		for (int col = 0; col < nrow; ++col){sum += new_trans(row, col);}
