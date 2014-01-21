@@ -104,3 +104,7 @@ fitNB_inner <- function(counts, posteriors, initR = -1) {
     .Call('kfoots_fitNB_inner', PACKAGE = 'kfoots', counts, posteriors, initR)
 }
 
+fitModels <- function(counts, posteriors, models, ucs = NULL, nthreads = 1L) {
+    .Call('kfoots_fitModels', PACKAGE = 'kfoots', counts, posteriors, models, ucs, nthreads)
+}
+

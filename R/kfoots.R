@@ -107,6 +107,8 @@ kfoots <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
 #'			whole dataset across iterations}
 #' @export
 kfoots_core <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=1, addnoise=FALSE, verbose=FALSE){
+	if (verbose)
+		cat("kfoots with ", nthreads, " threads\n")
 	if (!is.matrix(counts))
 		stop("invalid counts variable provided. It must be a matrix")
 	#this will ensure efficiency of certain methods.
@@ -159,16 +161,32 @@ kfoots_core <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthr
 		
 		if (verbose){
 			cat("Iteration: ", iter, ", log-likelihood: ", new_loglik, "\n")
+			for (i in seq_along(models)){
+				model <- models[[i]]
+				cat("Model ", i, ":\n")
+				cat("mu: ", model$mu, " r: ", model$r, " ps: ",  model$ps, "\n")
+			}
+			
 		}
 		
-		new_models <- list()
-		for (m in 1:k){
-			if (!is.null(models[[m]]$tag) && models[[m]]$tag == "noise"){
-				new_models[[m]] <- fitNoiseModel(counts, posteriors[m,], models[[m]]$r, ucs=ucs, nthreads=nthreads)
-			} else {
-				new_models[[m]] <- fitModel(counts, posteriors[m,], models[[m]]$r, ucs=ucs, nthreads=nthreads)
-			}
+		new_models <- fitModels(counts, posteriors, models, ucs=ucs, nthreads=nthreads)
+		
+		if (addnoise){
+			new_models[[1]]$ps <- rep(1/footlen, footlen)
 		}
+		for (model in new_models){
+			if (any(model$ps < 0))
+				stop("something wrong in fitting the multinomial...")
+		}
+		
+		
+#~ 		for (m in 1:k){
+#~ 			if (!is.null(models[[m]]$tag) && models[[m]]$tag == "noise"){
+#~ 				new_models[[m]] <- fitNoiseModel(counts, posteriors[m,], models[[m]]$r, ucs=ucs, nthreads=nthreads)
+#~ 			} else {
+#~ 				new_models[[m]] <- fitModel(counts, posteriors[m,], models[[m]]$r, ucs=ucs, nthreads=nthreads)
+#~ 			}
+#~ 		}
 		if(iter!=1 && new_loglik < loglik && !compare(new_loglik, loglik, tol))
 			warning(paste0("decrease in log-likelihood at iteration ",iter))
 		

@@ -122,6 +122,18 @@ static inline void parseModels(Rcpp::List models, Vec<double> mus, Vec<double> r
 	}
 }
 
+static inline Rcpp::List writeModels(Vec<double> mus, Vec<double> rs, Mat<double> ps){
+	int nmod = mus.len;
+	unsigned int footsize = ps.nrow;
+	Rcpp::List ret(nmod);
+	for (int i = 0; i < nmod; ++i){
+		Rcpp::NumericVector currps(footsize);
+		memcpy(currps.begin(), ps.colptr(i), footsize*sizeof(double));
+		ret[i] = Rcpp::List::create(Rcpp::Named("mu")=mus[i], Rcpp::Named("r")=rs[i], Rcpp::Named("ps")=currps);
+	}
+	return ret;
+}
+
 // [[Rcpp::export]]
 Rcpp::NumericVector lLik(Rcpp::IntegerMatrix counts, Rcpp::List model, 
 		SEXP ucs = R_NilValue,
@@ -216,3 +228,39 @@ Rcpp::List fitNB_inner(Rcpp::IntegerVector counts, Rcpp::NumericVector posterior
 	
 	return Rcpp::List::create(Rcpp::Named("mu")=mu, Rcpp::Named("r")=r);
 }
+
+// [[Rcpp::export]]
+Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, 
+	SEXP ucs = R_NilValue,
+	int nthreads=1){
+	
+	//parse or compute preprocessing data (multinomConst is not needed)
+	if (Rf_isNull(ucs)){
+		ucs = (SEXP) mapToUnique(colSumsInt(counts, nthreads));
+	}
+	Rcpp::List ucs_list(ucs); 
+	Rcpp::IntegerVector uniqueCS = ucs_list["values"];
+	Rcpp::IntegerVector map = ucs_list["map"];
+	NMPreproc preproc(asVec<int>(uniqueCS), asVec<int>(map), Vec<double>(0,0));
+	
+	Mat<int> countsMat = asMat<int>(counts);
+	Mat<double> postMat = asMat<double>(posteriors);
+	//parsing the models
+	int nmodels = models.length();
+	int footlen = countsMat.nrow;
+	std::vector<double> musSTD(nmodels);
+	std::vector<double> rsSTD(nmodels);
+	std::vector<double> psSTD(nmodels*footlen);
+	Vec<double> mus = asVec(musSTD);
+	Vec<double> rs = asVec(rsSTD);
+	Mat<double> ps = asMat(psSTD, nmodels);
+	parseModels(models, mus, rs, ps);
+	//allocating some temporary memory
+	std::vector<double> tmpNB(uniqueCS.length()*nmodels);
+	
+	fitNBs_core(postMat, mus, rs, preproc, asMat(tmpNB, nmodels), nthreads);
+	fitMultinoms_core(countsMat, postMat, ps, nthreads);
+	
+	return writeModels(mus, rs, ps);
+}
+

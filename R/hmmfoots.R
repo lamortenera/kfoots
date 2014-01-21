@@ -89,10 +89,8 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 			cat("Iteration: ", iter, ", log-likelihood: ", new_loglik, "\n")
 		}
 
-		new_models <- list()
-		for (m in 1:k){
-			new_models[[m]] <- fitModel(counts, posteriors[m,], models[[m]]$r, ucs=ucs, nthreads=nthreads)
-		}
+		new_models <- fitModels(counts, posteriors, models, ucs=ucs, nthreads=nthreads)
+		
 		if(iter!=1 && new_loglik < loglik && !compare(new_loglik, loglik, tol))
 			warning(paste0("decrease in log-likelihood at iteration ",iter))
 		

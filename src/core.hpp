@@ -210,7 +210,7 @@ static inline double optimFun_core(Vec<int> counts, double mu, double r, Vec<dou
 	}
 	//std::cout << "OptimFun_core @: " << r << "->" << -llik <<std::endl;
 	//std::cout << -llik << std::endl;
-	std::cout << "optimFun_core @: " << r << "->" << -llik <<std::endl;
+	//std::cout << "optimFun_core @: " << r << "->" << -llik <<std::endl;
 	return (double)llik;
 }
 
@@ -822,6 +822,92 @@ static inline void pwhichmax_core(Mat<double> posteriors, Vec<int> clusters, int
 }
 
 
+static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
+	//std::cout << "fitNBs_core" << std::endl;
+	int ncol = posteriors.ncol;
+	int nmod = posteriors.nrow;
+	Vec<int> map = preproc.map;
+	Vec<int> values = preproc.uniqueCS;
+	//make sure that tmpNB here has the desired format 
+	//(transpose of the one used in llikMat)
+	tmpNB.ncol = nmod;
+	tmpNB.nrow = values.len;
+	
+	//for the fitNB function call, I didn't find anything better than
+	//nested parallel regions... this happens when nmod < nthreads
+	int threads_per_model = ceil(((double)(nthreads))/nmod);
+	
+	omp_set_num_threads(nthreads);
+	omp_set_nested(true);
+	//make sure we're not using more than nthreads threads
+	omp_set_dynamic(true);
+	
+	//fitting the negative binomials
+	#pragma omp parallel for schedule(dynamic) num_threads(nmod)
+	for (int mod = 0; mod < nmod; ++mod){
+		//std::cout << "mod: " << mod << std::endl;
+		//set up the tmpNB matrix: it will contain the
+		//posteriors wrt the unique counts
+		double* tmpNBCol = tmpNB.colptr(mod);
+		memset(tmpNBCol, 0, tmpNB.nrow*sizeof(double));
+		//this should be parallelized on the models, because otherwise tmpNBCol is
+		//shared
+		for (int col = 0; col < ncol; ++col){
+			tmpNBCol[map[col]] += posteriors(mod, col);
+		}
+		//call the optimization procedure. This will use up to threads_per_model threads
+		//std::cout << "calling fitNB " << mod << std::endl;
+		//std::cout << "R: before fitting: " << rs[mod] << std::endl;
+		fitNB_core(values, Vec<double>(tmpNBCol, tmpNB.nrow), mus.ptr + mod, rs.ptr + mod, rs[mod], threads_per_model);
+		//std::cout << "R: after fitting: " << rs[mod] << std::endl;
+	}
+}
+
+static void fitMultinoms_core(Mat<int> counts, Mat<double> posteriors, Mat<double> ps, int nthreads){
+	//std::cout << "fitMultinom_core" << std::endl;
+	int nmod = posteriors.nrow;
+	int nrow = counts.nrow;
+	int ncol = counts.ncol;
+	
+	#pragma omp parallel num_threads(nthreads)
+	{
+		//fitting the multinomial. 
+		std::vector<double> tmp_ps_std(nrow*nmod, 0);
+		Mat<double> tmp_ps = asMat(tmp_ps_std, nmod);
+		#pragma omp for schedule(static) nowait
+		for (int col = 0; col < ncol; ++col){
+			//This you could probably do better with BLAS...
+			double* postCol = posteriors.colptr(col);
+			int* countCol = counts.colptr(col);
+			for (int mod = 0; mod < nmod; ++mod, ++postCol){
+				double post = *postCol;
+				double* psCol = tmp_ps.colptr(mod);
+				for (int row = 0; row < nrow; ++row){
+					psCol[row] += countCol[row]*post;
+				}
+			}
+		}
+		#pragma omp critical
+		{
+			for (int i = 0, e = nrow*nmod; i < e; ++i){
+				ps[i] += tmp_ps[i];
+			}
+		}
+		#pragma omp barrier
+		//ps contains now the non-normalized optimal ps parameter, normalize!
+		//parallelization is probably overkill, but can it be worse than without?
+		
+		#pragma omp for schedule(static)
+		for (int mod = 0; mod < nmod; ++mod){
+			double* psCol = ps.colptr(mod);
+			double sum = 0;
+			for (int row = 0; row < nrow; ++row){sum += psCol[row];}
+			for (int row = 0; row < nrow; ++row){psCol[row] /= sum;}
+		}
+	}
+}
+
+/*
 static void fitModels_core(Mat<int> counts, Mat<double> posteriors, Vec<double> rs, Mat<double> ps, Vec<double> mus, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
 	int nrow = counts.nrow;
 	int ncol = counts.ncol;
@@ -829,13 +915,18 @@ static void fitModels_core(Mat<int> counts, Mat<double> posteriors, Vec<double> 
 	
 	int threads_per_model = ceil(((double)(nthreads))/nmod);
 	
+	Vec<int> map = preproc.map;
+	Vec<int> values = preproc.uniqueCS;
 	//make sure that tmpNB here has the desired format 
 	//(transpose of the one used in llikMat)
 	tmpNB.ncol = nmod;
-	tmpNB.nrow = ncol;
-	Vec<int> map = preproc.map;
-	Vec<int> values = preproc.uniqueCS;
-		
+	tmpNB.nrow = values.len;
+	
+	//for the fitNB function call, I didn't find anything better than
+	//nested parallel regions...
+	omp_set_nested(true);
+	omp_set_dynamic(true);
+	
 	#pragma omp parallel num_threads(nthreads)
 	{
 		//fitting the negative binomial
@@ -887,3 +978,4 @@ static void fitModels_core(Mat<int> counts, Mat<double> posteriors, Vec<double> 
 		}
 	}
 }
+*/

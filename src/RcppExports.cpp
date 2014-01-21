@@ -283,3 +283,22 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
+// fitModels
+Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, SEXP ucs = R_NilValue, int nthreads = 1);
+RcppExport SEXP kfoots_fitModels(SEXP countsSEXP, SEXP posteriorsSEXP, SEXP modelsSEXP, SEXP ucsSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type posteriors(posteriorsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::List >::type models(modelsSEXP );
+        Rcpp::traits::input_parameter< SEXP >::type ucs(ucsSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::List __result = fitModels(counts, posteriors, models, ucs, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
