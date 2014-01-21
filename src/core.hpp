@@ -2,7 +2,8 @@
 #include <algorithm> 
 #include <unordered_map>
 #include <Rcpp.h>
-
+#include <math.h>
+#include "optim.cpp"
 
 //Matrix and vector wrappers for pointers
 template<typename TType>
@@ -51,6 +52,10 @@ struct Mat {
 	
 	inline TType* colptr(int col){
 		return ptr + col*nrow;
+	}
+	
+	inline Vec<TType> getCol(int col){
+		return Vec<TType>(ptr + col*nrow, nrow);
 	}
 };
 
@@ -193,6 +198,7 @@ static inline void nbinomLoglik_core(Vec<int> counts, double mu, double r, Vec<d
 
 
 static inline double optimFun_core(Vec<int> counts, double mu, double r, Vec<double> posteriors, int nthreads){
+	
 	int e = counts.len;
 	double* i_post = posteriors.ptr;
 	int* i_counts = counts.ptr;
@@ -202,9 +208,189 @@ static inline double optimFun_core(Vec<int> counts, double mu, double r, Vec<dou
 		double tmp = Rf_dnbinom_mu(i_counts[i], r, mu, 1)*(i_post[i]);
 		if (!std::isnan(tmp)){ llik += tmp; }
 	}
-	
+	//std::cout << "OptimFun_core @: " << r << "->" << -llik <<std::endl;
+	//std::cout << -llik << std::endl;
+	std::cout << "optimFun_core @: " << r << "->" << -llik <<std::endl;
 	return (double)llik;
 }
+
+
+//data for optimization function.
+//It is always assumed that mu is also the mean count.
+struct optimData {
+	Vec<int> counts;
+	Vec<double> posteriors;
+	double mu;
+	double spost;
+	int nthreads;
+};
+
+//optimization function: it's very fast but it does not work
+/* It's a problem of numerical stability...
+ negative log likelihood function without the term due to the factorials
+ * (as they don't play a role in the optimization)
+ 
+static double fn(int n, double* logr, void* data){
+	optimData* info = (optimData*) data;
+	double mu = info->mu;
+	double spost = info->spost;
+	double ret;
+	double r = exp(*logr);
+	if (!std::isfinite(r)){//r==+Inf, poisson case
+		ret = spost*mu*(1 - log(mu));
+		
+	} else if (r == 0){//degenerate distribution concentrated at 0
+		if (mu == 0) ret = 0; 
+		else ret = INFINITY;
+	} else {//normal case
+		ret = spost*(-Rf_lgammafn(r) + mu*log(mu/(mu+r)) + r*log(r/(mu+r)));
+		
+		long double part2 = 0;
+		int e = info->counts.len;
+		double* post = info->posteriors.ptr;
+		int* counts = info->counts.ptr;
+		
+		
+		for (int i = 0; i < e; ++i){
+			double tmp = Rf_lgammafn(counts[i]+r)*post[i];
+			if (!std::isnan(tmp)){ part2 += tmp; }
+		}
+		
+		ret += part2;
+	}
+	
+	std::cout << "fn @: " << r << "->" << -ret <<std::endl;
+	
+		
+	return -ret;
+}
+*/
+
+//optimization function
+
+static double fn(int n, double* logr, void* data){
+	optimData* info = (optimData*) data;
+	double mu = info->mu;
+	double r = exp(*logr);
+	double* post = info->posteriors.ptr;
+	int* counts = info->counts.ptr;
+	int e = info->counts.len;
+	int nthreads = info->nthreads;
+	
+	long double llik = 0;
+	if (r == 0){//r==+Inf, poisson case
+		if (mu == 0) llik = 0; 
+		else llik = -INFINITY;
+	} else if (!std::isfinite(r)){//degenerate distribution concentrated at 0
+
+		#pragma omp parallel for reduction(+:llik) num_threads(nthreads)
+		for (int i = 0; i < e; ++i){
+			double tmp = Rf_dpois(counts[i], mu, 1)*post[i];
+			if (!std::isnan(tmp)){ llik += tmp; }
+		}
+	} else {//normal case
+		
+		#pragma omp parallel for reduction(+:llik) num_threads(nthreads)
+		for (int i = 0; i < e; ++i){
+			double tmp = Rf_dnbinom_mu(counts[i], r, mu, 1)*post[i];
+			if (!std::isnan(tmp)){ llik += tmp; }
+		}
+	}
+	//std::cout << "fn @: " << r << "->" << -llik <<std::endl;
+	
+	return -llik;
+}
+
+//derivative of the optimization function
+static void dfn(int n, double* x, double* ret, void* data){
+	/*
+	optimData* info = (optimData*) data;
+	double mu = info->mu;
+	double r = exp(*x);
+	double spost = info->spost;
+	
+	double part1 = spost*(-Rf_digamma(r) + log(r/(mu+r)));
+	
+	long double part2 = 0;
+	int e = info->counts.len;
+	double* post = info->posteriors.ptr;
+	int* counts = info->counts.ptr;
+	
+	
+	for (int i = 0; i < e; ++i){
+		double tmp = Rf_digamma(counts[i]+r)*post[i];
+		if (!std::isnan(tmp)){ part2 += tmp; }
+	}
+	
+	*ret = -(part1 + part2)*r;
+	*/
+	//something is wrong with the real derivative... no idea what
+	//0.001 is the same parameter used by R
+	
+	double x1 = *x + 0.001;
+	double x2 = *x - 0.001;
+	double nd = (fn(n, &x1, data) - fn(n, &x2, data))/0.002;
+	//double r = exp(*x);
+	
+	//std::cout << "dfn: " << r << "->" << nd << std::endl;
+	
+	*ret = nd;
+	
+	
+	
+	if(!std::isfinite(*ret))
+		throw std::invalid_argument("non-finite value in derivative of optimization function");
+}
+
+static inline void fitNB_core(Vec<int> counts, Vec<double> posteriors, double* mu, double* r, double initR, int nthreads=1){
+	//get weighted average
+	long double sum_cp = 0;
+	long double sum_p = 0;
+	int* c = counts.ptr;
+	double* p = posteriors.ptr;
+	for (int i = 0, e = counts.len; i < e; ++i, ++c, ++p){
+		sum_cp += (*c) * (*p);
+		sum_p += *p;
+	}
+	*mu = sum_cp/sum_p;
+	
+	if (initR < 0){
+		//find a suitable initial value for r:
+		//estimate and match empirical second moment
+		long double sum_c2p = 0;
+		c = counts.ptr;
+		p = posteriors.ptr;
+		for (int i = 0, e = counts.len; i < e; ++i, ++c, ++p){
+			sum_c2p += (*c) * (*c) * (*p);
+		}
+		initR = (*mu) * (*mu) / (sum_c2p/sum_p  -  *mu * (*mu + 1));
+	}
+	
+	if (initR < 0 || !std::isfinite(initR)){
+		//either the second moment matched above does not have overdispersion
+		// or the initial value was +Inf
+		initR = DBL_MAX; //poisson case
+	}
+	
+	optimData info;
+	info.counts = counts;
+	info.posteriors = posteriors;
+	info.mu = *mu;
+	info.spost = sum_p;
+	info.nthreads = nthreads;
+	//default used by R
+	//optimization is done in the log space
+	initR = log(initR);
+	
+	double maxfn = 0;
+	
+	lbfgsb_wrapper(&fn, &dfn, &info, &initR, &maxfn, 0, 0);
+	//bfgs_wrapper(&fn, &dfn, &info, &initR, &maxfn);
+	
+	*r = exp(initR);
+}
+
+
 
 struct NMPreproc {
 	Vec<int> uniqueCS;
@@ -632,5 +818,72 @@ static inline void pwhichmax_core(Mat<double> posteriors, Vec<int> clusters, int
 			}
 		}
 		clusters[col] = whichmax;
+	}
+}
+
+
+static void fitModels_core(Mat<int> counts, Mat<double> posteriors, Vec<double> rs, Mat<double> ps, Vec<double> mus, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
+	int nrow = counts.nrow;
+	int ncol = counts.ncol;
+	int nmod = posteriors.nrow;
+	
+	int threads_per_model = ceil(((double)(nthreads))/nmod);
+	
+	//make sure that tmpNB here has the desired format 
+	//(transpose of the one used in llikMat)
+	tmpNB.ncol = nmod;
+	tmpNB.nrow = ncol;
+	Vec<int> map = preproc.map;
+	Vec<int> values = preproc.uniqueCS;
+		
+	#pragma omp parallel num_threads(nthreads)
+	{
+		//fitting the negative binomial
+		#pragma omp for schedule(dynamic) nowait
+		for (int mod = 0; mod < nmod; ++mod){
+			//set up the tmpNB matrix: it will contain the
+			//posteriors wrt the unique counts
+			double* tmpNBCol = tmpNB.colptr(mod);
+			memset(tmpNBCol, 0, ncol*sizeof(double));
+			//this should be parallelized on the models, because otherwise tmpNBCol is
+			//shared
+			for (int col = 0; col < ncol; ++col){
+				tmpNBCol[map[col]] += posteriors(mod, col);
+			}
+			//call the optimization procedure
+			fitNB_core(values, Vec<double>(tmpNBCol, nrow), mus.ptr + mod, rs.ptr + mod, rs[mod], threads_per_model);
+		}
+		
+		//fitting the multinomial. 
+		std::vector<double> tmp_ps_std(nrow*nmod, 0);
+		Mat<double> tmp_ps = asMat(tmp_ps_std, nmod);
+		#pragma omp for schedule(static) nowait
+		for (int col = 0; col < ncol; ++col){
+			//This you could probably do better with BLAS...
+			double* postCol = posteriors.colptr(col);
+			int* countCol = counts.colptr(col);
+			for (int mod = 0; mod < nmod; ++mod, ++postCol){
+				double post = *postCol;
+				double* psCol = tmp_ps.colptr(mod);
+				for (int row = 0; row < nrow; ++row){
+					psCol[row] += countCol[row]*post;
+				}
+			}
+		}
+		#pragma omp critical
+		{
+			for (int i = 0, e = nrow*nmod; i < e; ++i){
+				ps[i] += tmp_ps[i];
+			}
+		}
+		//ps contains now the non-normalized optimal ps parameter, normalize!
+		//parallelization is probably overkill, but can it be worse than without?
+		#pragma omp for schedule(static)
+		for (int mod = 0; mod < nmod; ++mod){
+			double* psCol = ps.colptr(mod);
+			double sum = 0;
+			for (int row = 0; row < nrow; ++row){sum += psCol[row];}
+			for (int row = 0; row < nrow; ++row){psCol[row] /= sum;}
+		}
 	}
 }

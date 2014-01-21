@@ -354,23 +354,16 @@ fitNB <- function(counts, posteriors=NULL, old_r=NULL, maxit=100, nthreads=1){
 	counts <- ucs$values
 	posteriors <- sumAt(posteriors, ucs$map, length(counts), zeroIdx=TRUE)
 	
-	
-	spost <- sum(posteriors)
-	mu <- sum(posteriors*counts)/spost
+		
 	if (is.null(old_r)){
-		#figure out a reasonable estimate for r.
-		#match the second moment
-		v <- sum(posteriors*counts^2)/spost - mu^2
-		old_r <- mu^2/(v - mu)
+		#the algorithm will figure out a reasonable estimate for r.
+		#(match the second moment)
+		old_r <- -1
+		
 	}
 	
-	f <- function(logr) {
-		#-sum(nbinom_logLik(counts, mu, exp(logr))*posteriors, na.rm=T)
-		-optimFun(counts, mu, exp(logr), posteriors, nthreads)
-	}
-	o <- optim(log(old_r), f, lower=-30, upper=10, method="L-BFGS-B", control=list(maxit=maxit))
-	r <- exp(o$par)
-	list(mu=mu, r=r)
+	fitNB_inner(counts, posteriors, old_r)
+	
 }
 
 

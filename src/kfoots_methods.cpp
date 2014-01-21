@@ -208,3 +208,11 @@ Rcpp::IntegerVector pwhichmax(Rcpp::NumericMatrix posteriors, int nthreads=1){
 	return clusters;
 }
 
+// [[Rcpp::export]]
+Rcpp::List fitNB_inner(Rcpp::IntegerVector counts, Rcpp::NumericVector posteriors, double initR=-1){
+	double mu = -1;
+	double r = -1;
+	fitNB_core(asVec<int>(counts), asVec<double>(posteriors), &mu, &r, initR);
+	
+	return Rcpp::List::create(Rcpp::Named("mu")=mu, Rcpp::Named("r")=r);
+}

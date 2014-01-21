@@ -100,3 +100,7 @@ pwhichmax <- function(posteriors, nthreads = 1L) {
     .Call('kfoots_pwhichmax', PACKAGE = 'kfoots', posteriors, nthreads)
 }
 
+fitNB_inner <- function(counts, posteriors, initR = -1) {
+    .Call('kfoots_fitNB_inner', PACKAGE = 'kfoots', counts, posteriors, initR)
+}
+

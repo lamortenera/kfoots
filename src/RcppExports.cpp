@@ -266,3 +266,20 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
+// fitNB_inner
+Rcpp::List fitNB_inner(Rcpp::IntegerVector counts, Rcpp::NumericVector posteriors, double initR = -1);
+RcppExport SEXP kfoots_fitNB_inner(SEXP countsSEXP, SEXP posteriorsSEXP, SEXP initRSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type posteriors(posteriorsSEXP );
+        Rcpp::traits::input_parameter< double >::type initR(initRSEXP );
+        Rcpp::List __result = fitNB_inner(counts, posteriors, initR);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
