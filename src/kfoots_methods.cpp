@@ -116,9 +116,16 @@ static inline void parseModels(Rcpp::List models, Vec<double> mus, Vec<double> r
 	unsigned int footsize = sizeof(double)*ps.nrow;
 	for (int i = 0; i < models.length(); ++i){
 		Rcpp::List model = models[i];
-		mus[i] = model["mu"]; rs[i] = model["r"];
-		Rcpp::NumericVector currps = model["ps"];
-		memcpy(ps.colptr(i), currps.begin(), footsize);
+		if (mus.ptr != 0){
+			mus[i] = model["mu"]; 
+		}
+		if (rs.ptr != 0){
+			rs[i] = model["r"];
+		}
+		if (ps.ptr != 0){
+			Rcpp::NumericVector currps = model["ps"];
+			memcpy(ps.colptr(i), currps.begin(), footsize);
+		}
 	}
 }
 
@@ -254,7 +261,7 @@ Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors,
 	Vec<double> mus = asVec(musSTD);
 	Vec<double> rs = asVec(rsSTD);
 	Mat<double> ps = asMat(psSTD, nmodels);
-	parseModels(models, mus, rs, ps);
+	parseModels(models, Vec<double>(0,0), rs, Mat<double>(0,0,0));
 	//allocating some temporary memory
 	std::vector<double> tmpNB(uniqueCS.length()*nmodels);
 	

@@ -856,10 +856,7 @@ static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs,
 			tmpNBCol[map[col]] += posteriors(mod, col);
 		}
 		//call the optimization procedure. This will use up to threads_per_model threads
-		//std::cout << "calling fitNB " << mod << std::endl;
-		//std::cout << "R: before fitting: " << rs[mod] << std::endl;
 		fitNB_core(values, Vec<double>(tmpNBCol, tmpNB.nrow), mus.ptr + mod, rs.ptr + mod, rs[mod], threads_per_model);
-		//std::cout << "R: after fitting: " << rs[mod] << std::endl;
 	}
 }
 
@@ -871,7 +868,7 @@ static void fitMultinoms_core(Mat<int> counts, Mat<double> posteriors, Mat<doubl
 	
 	#pragma omp parallel num_threads(nthreads)
 	{
-		//fitting the multinomial. 
+		//fitting the multinomial 
 		std::vector<double> tmp_ps_std(nrow*nmod, 0);
 		Mat<double> tmp_ps = asMat(tmp_ps_std, nmod);
 		#pragma omp for schedule(static) nowait
@@ -887,6 +884,8 @@ static void fitMultinoms_core(Mat<int> counts, Mat<double> posteriors, Mat<doubl
 				}
 			}
 		}
+		
+		
 		#pragma omp critical
 		{
 			for (int i = 0, e = nrow*nmod; i < e; ++i){
