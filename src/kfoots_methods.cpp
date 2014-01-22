@@ -241,6 +241,14 @@ Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors,
 	SEXP ucs = R_NilValue,
 	int nthreads=1){
 	
+	int nmodels = models.length();
+	int footlen = counts.nrow();
+	
+	if (	counts.ncol() != posteriors.ncol() ||
+			posteriors.nrow() != nmodels ){
+		throw std::invalid_argument("Invalid arguments passed to fitModels");
+	}
+	
 	//parse or compute preprocessing data (multinomConst is not needed)
 	if (Rf_isNull(ucs)){
 		ucs = (SEXP) mapToUnique(colSumsInt(counts, nthreads));
@@ -253,8 +261,6 @@ Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors,
 	Mat<int> countsMat = asMat<int>(counts);
 	Mat<double> postMat = asMat<double>(posteriors);
 	//parsing the models
-	int nmodels = models.length();
-	int footlen = countsMat.nrow;
 	std::vector<double> musSTD(nmodels);
 	std::vector<double> rsSTD(nmodels);
 	std::vector<double> psSTD(nmodels*footlen);

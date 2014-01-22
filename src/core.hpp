@@ -266,22 +266,23 @@ static double fn(int n, double* logr, void* data){
 }
 */
 
-//optimization function
+//optimization function (for 2 different APIs)
 
-static double fn(int n, double* logr, void* data){
+//brent API
+static double fn1d(double logr, void* data){
 	optimData* info = (optimData*) data;
 	double mu = info->mu;
-	double r = exp(*logr);
+	double r = exp(logr);
 	double* post = info->posteriors.ptr;
 	int* counts = info->counts.ptr;
 	int e = info->counts.len;
 	int nthreads = info->nthreads;
 	
 	long double llik = 0;
-	if (r == 0){//r==+Inf, poisson case
+	if (r == 0){//degenerate distribution concentrated at 0
 		if (mu == 0) llik = 0; 
 		else llik = -INFINITY;
-	} else if (!std::isfinite(r)){//degenerate distribution concentrated at 0
+	} else if (!std::isfinite(r)){//r==+Inf, poisson case
 
 		#pragma omp parallel for reduction(+:llik) num_threads(nthreads)
 		for (int i = 0; i < e; ++i){
@@ -300,6 +301,12 @@ static double fn(int n, double* logr, void* data){
 	
 	return -llik;
 }
+
+//lbfgsf API
+static double fn(int n, double* logr, void* data){
+	return fn1d(*logr, data);
+}
+
 
 //derivative of the optimization function
 static void dfn(int n, double* x, double* ret, void* data){
@@ -382,10 +389,12 @@ static inline void fitNB_core(Vec<int> counts, Vec<double> posteriors, double* m
 	//optimization is done in the log space
 	initR = log(initR);
 	
-	double maxfn = 0;
+	//double maxfn = 0;
 	
-	lbfgsb_wrapper(&fn, &dfn, &info, &initR, &maxfn, 0, 0);
+	//lbfgsb_wrapper(&fn, &dfn, &info, &initR, &maxfn, 0, 0);
 	//bfgs_wrapper(&fn, &dfn, &info, &initR, &maxfn);
+	//log(r1), log(r1) + 0.1, fn, &info, tol
+	initR = brent_wrapper(initR, initR + 0.1, fn1d, &info, 1e-8);
 	
 	*r = exp(initR);
 }
@@ -826,6 +835,9 @@ static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs,
 	//std::cout << "fitNBs_core" << std::endl;
 	int ncol = posteriors.ncol;
 	int nmod = posteriors.nrow;
+	if (mus.len != nmod || rs.len != nmod || tmpNB.ncol*tmpNB.nrow != nmod*preproc.uniqueCS.len){
+		throw std::invalid_argument("invalid parameters passed to fitNBs_core");
+	}
 	Vec<int> map = preproc.map;
 	Vec<int> values = preproc.uniqueCS;
 	//make sure that tmpNB here has the desired format 
@@ -835,13 +847,13 @@ static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs,
 	
 	//for the fitNB function call, I didn't find anything better than
 	//nested parallel regions... this happens when nmod < nthreads
-	int threads_per_model = ceil(((double)(nthreads))/nmod);
+	int threads_per_model = ceil(((double)nthreads)/nmod);
 	
 	omp_set_num_threads(nthreads);
 	omp_set_nested(true);
 	//make sure we're not using more than nthreads threads
 	omp_set_dynamic(true);
-	
+	//std::cout << "starting main loop" << std::endl;
 	//fitting the negative binomials
 	#pragma omp parallel for schedule(dynamic) num_threads(nmod)
 	for (int mod = 0; mod < nmod; ++mod){
@@ -856,7 +868,8 @@ static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs,
 			tmpNBCol[map[col]] += posteriors(mod, col);
 		}
 		//call the optimization procedure. This will use up to threads_per_model threads
-		fitNB_core(values, Vec<double>(tmpNBCol, tmpNB.nrow), mus.ptr + mod, rs.ptr + mod, rs[mod], threads_per_model);
+		//std::cout << "calling fitNB_core" << std::endl;
+		fitNB_core(values, Vec<double>(tmpNBCol, tmpNB.nrow), &mus[mod], &rs[mod], rs[mod], threads_per_model);
 	}
 }
 

@@ -169,3 +169,206 @@ static inline void bfgs_wrapper(optimfn fn, optimgr gr, void* ex, double* x, dou
 	}
 }
 */
+
+
+/*
+ * Given two points ax and bx it finds a bracketing triple ax, bx, cx
+ * such that bx is within [ax, cx] (or [cx, ax]) and fa > fb < fc
+ * copied from "numerical recipies in C: routine for initially bracketing a Minimum"
+ * only modifications: 
+ * 1. from float to double
+ * 2. function func now takes the parameter info
+ * 3. replaced the pointers with temp variables
+ */
+#define GOLD 1.618034
+#define GLIMIT 100
+#define TINY 1.0e-20
+#define SHFT(a,b,c,d) (a)=(b);(b)=(c);(c)=(d);
+#define SIGN(a,b) ((b) >= 0.0 ? fabs(a) : -fabs(a))
+#define FMAX(a,b) ((a) > (b) ? (a) : (b))
+
+static void mnbrak(double* _ax, double* _bx, double* _cx, double* _fa, double* _fb, double* _fc, double (*func)(double, void*), void* info){
+	double ax = *_ax;
+	double bx = *_bx;
+	double ulim, u, r, q, fu, dum, cx, fa, fb, fc;
+	fa = (*func)(ax, info);
+	fb = (*func)(bx, info);
+	//makes sure that fb <= fa by swapping b with a
+	if (fb > fa){
+		SHFT(dum, ax, bx, dum);
+		SHFT(dum, fb, fa, dum);
+	}
+	//first guess for c
+	cx = bx + GOLD*(bx-ax);
+	fc = (*func)(cx, info);
+	while (fb > fc){//keep returning here until we bracket
+		r = (bx-ax)*(fb-fc);
+		q = (bx-cx)*(fb-fa);
+		u = bx - ((bx-cx)*q - (bx-ax)*r)/(2.0*SIGN(FMAX(fabs(q-r), TINY), q-r));
+		ulim = bx + GLIMIT*(cx - bx);//we won't go further than this
+		//test various possibilities
+		if ((bx-u)*(u-cx) > 0.0){ //parabolic u is between b and c, try it!
+			fu = (*func)(u, info);
+			if (fu < fc){//got a minimum between b and c
+				*_ax = bx; *_fa = fb;
+				*_bx = u; *_fb = fu;
+				*_cx = cx; *_fc = fc;
+				return;
+			} else if (fu > fb){//got a minimum between a and u
+				*_ax = ax; *_fa = fa;
+				*_bx = bx; *_fb = fb;
+				*_cx = u; *_fc = fu;
+				return;
+			}
+			//parabolic fit was no use, use default magnification
+			u = cx + GOLD*(cx-bx);
+			fu = (*func)(u, info);
+		} else if ((cx-u)*(u-ulim) > 0.0){//parabolic fit is between c and its allowed limit
+			fu = (*func)(u, info);
+			if (fu < fc){
+				SHFT(bx, cx, u, cx + GOLD*(cx-bx))
+				SHFT(fb, fc, fu, (*func)(u, info))
+			}
+		} else if ((u-ulim)*(ulim-cx) >= 0.0){//limit parabolic u to maximum allowed value
+			u = ulim;
+			fu = (*func)(u, info);
+		} else {//reject parabolic u, use default magnification
+			u = cx + GOLD*(cx-bx);
+			fu = (*func)(u, info);
+		}
+		//Eliminate oldest point and continue
+		SHFT(ax, bx, cx, u)
+		SHFT(fa, fb, fc, fu)
+	}
+	//fb < fc, we found the bracketing triple
+	*_ax = ax; *_fa = fa;
+	*_bx = bx; *_fb = fb;
+	*_cx = cx; *_fc = fc;
+	return;
+}
+
+//adapted from the R's library
+//it must hold: ax  < vx < bx
+static double Brent_fmin(double ax, double xx, double bx, double (*f)(double, void *), void *info, double tol, double* _fx)
+{
+    if (ax > xx || xx > bx){
+		 throw std::invalid_argument("the three initial points must be in ascending order");
+	 }
+    /*  c is the squared inverse of the golden ratio */
+    const double c = (3. - sqrt(5.)) * .5;
+
+    /* Local variables */
+    double a, b, d, e, p, q, r, u, v, w, x;
+    double t2, fu, fv, fw, fx, xm, eps, tol1, tol3;
+
+/*  eps is approximately the square root of the relative machine precision. */
+    eps = DBL_EPSILON;
+    tol1 = eps + 1.;/* the smallest 1.000... > 1 */
+    eps = sqrt(eps);
+
+    a = ax;
+    b = bx;
+    v = xx;
+    w = v;
+    x = v;
+
+    d = 0.;/* -Wall */
+    e = 0.;
+    if (_fx!=0){
+		 fx = *_fx;
+	 } else {
+		 fx = (*f)(x, info);
+	 }
+    fv = fx;
+    fw = fx;
+    tol3 = tol / 3.;
+
+/*  main loop starts here ----------------------------------- */
+
+    for(;;) {
+	xm = (a + b) * .5;
+	tol1 = eps * fabs(x) + tol3;
+	t2 = tol1 * 2.;
+
+	/* check stopping criterion */
+
+	if (fabs(x - xm) <= t2 - (b - a) * .5) break;
+	p = 0.;
+	q = 0.;
+	r = 0.;
+	if (fabs(e) > tol1) { /* fit parabola */
+
+	    r = (x - w) * (fx - fv);
+	    q = (x - v) * (fx - fw);
+	    p = (x - v) * q - (x - w) * r;
+	    q = (q - r) * 2.;
+	    if (q > 0.) p = -p; else q = -q;
+	    r = e;
+	    e = d;
+	}
+
+	if (fabs(p) >= fabs(q * .5 * r) ||
+	    p <= q * (a - x) || p >= q * (b - x)) { /* a golden-section step */
+
+	    if (x < xm) e = b - x; else e = a - x;
+	    d = c * e;
+	}
+	else { /* a parabolic-interpolation step */
+
+	    d = p / q;
+	    u = x + d;
+
+	    /* f must not be evaluated too close to ax or bx */
+
+	    if (u - a < t2 || b - u < t2) {
+		d = tol1;
+		if (x >= xm) d = -d;
+	    }
+	}
+
+	/* f must not be evaluated too close to x */
+
+	if (fabs(d) >= tol1)
+	    u = x + d;
+	else if (d > 0.)
+	    u = x + tol1;
+	else
+	    u = x - tol1;
+
+	fu = (*f)(u, info);
+
+	/*  update  a, b, v, w, and x */
+
+	if (fu <= fx) {
+	    if (u < x) b = x; else a = x;
+	    v = w;    w = x;   x = u;
+	    fv = fw; fw = fx; fx = fu;
+	} else {
+	    if (u < x) a = u; else b = u;
+	    if (fu <= fw || w == x) {
+		v = w; fv = fw;
+		w = u; fw = fu;
+	    } else if (fu <= fv || v == x || v == w) {
+		v = u; fv = fu;
+	    }
+	}
+    }
+    /* end of main loop */
+
+    return x;
+}
+
+static double brent_wrapper(double x1, double x2, double (*f)(double, void *), void *info, double tol){
+	//find a bracketing triple using x1 and x2 as starting points
+	double x3, f1, f2, f3, tmp;
+	
+	mnbrak(&x1, &x2, &x3, &f1, &f2, &f3, f, info);
+	
+	//reorder points from smallest to biggest
+	if (x3 < x1){
+		SHFT(tmp, x1, x3, tmp)
+		SHFT(tmp, f1, f3, tmp)
+	}
+	
+	return Brent_fmin(x1, x2, x3, f, info, tol, &f2);
+}
