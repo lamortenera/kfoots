@@ -46,15 +46,17 @@ plotColorKey <- function(zlim, n=20, col=heat.colors(n), side=4, lab="color key"
 }
 
 
-getMeanMatrix <- function(models, norm=F){
-	mat <- as.matrix(models[[1]]$ps*models[[1]]$mu, ncol=1)
-	for (i in 2:length(models)){
-		mat <- cbind(mat, models[[i]]$mu*models[[i]]$ps)
-	}
-	if (norm){
-		mat <- apply(mat, 2, function(col) col/sum(col))
-	}
-	mat
+getMeanMatrix <- function(models){
+	ps <- getPS(models)
+	mus <- getNBs(models)[1,]
+	
+	t(ps) * mus
+ }
+
+
+reorderMat <- function(models){
+	mps <- getMeanMatrix(models)
+	list(colIdx=hclust(dist(mps))$order, rowIdx=hclust(dist(t(mps)))$order)
 }
 
 getPS <- function(models){
@@ -70,8 +72,15 @@ getNBs <- function(models){
 }
 
 plotModels <- function(models, mix_coeff, widths=c(0.2,0.5,0.2,0.1)){
+	os <- reorderMat(models)
+	models <- models[os$colIdx]
+	mix_coeff <- mix_coeff[os$colIdx]
+	
 	if (is.null(names(models)))
 		names(models) <- paste0("cluster ", 1:length(models))
+	
+	
+	
 	ps <- getPS(models)
 	nbs <- getNBs(models)
 	layout(matrix(c(1,2,3,4), nrow=1), widths=widths)
@@ -89,17 +98,55 @@ plotModels <- function(models, mix_coeff, widths=c(0.2,0.5,0.2,0.1)){
 }
 
 plotHMM <- function(models, trans, widths=c(0.2,0.35,0.35,0.1)){
+	os <- reorderMat(models)
+	models <- models[os$colIdx]
+	trans <- trans[os$colIdx, os$colIdx]
+	
+	
 	if (is.null(names(models)))
 		names(models) <- paste0("cluster ", 1:length(models))
+	
+	
 	rownames(trans) <- names(models)
 	colnames(trans) <- names(models)
-	ps <- getPS(models)
+	ps <- getPS(models)[os$rowIdx,]
 	nbs <- getNBs(models)
 	lmar = 5
 	umar = 4
 	library(fields)
 	col <- tim.colors()
 	layout(matrix(c(1,2,3,4), nrow=1), widths=widths)
+	par(mar=c(lmar,4,umar,1))
+	plotNBs(nbs, main="mean and sd", xlab="tot read count")
+	par(mar=c(lmar,1,umar,1), las=2)
+	plotMatrix(t(ps), main="multinomial probs.", zlim=c(0,1), yticks=NA, col=col)
+	par(mar=c(lmar,1,umar,1))
+	plotMatrix(trans, main="trans. probs.", zlim=c(0,1), yticks=NA, col=col)
+	par(mar=c(lmar,1,umar,3.5), las=0)
+	plotColorKey(c(0,1), col=col, n=64)
+	
+}
+
+plotHMM2 <- function(models, trans, widths=c(0.6,0.4), heights=c(0.1, 0.9)){
+	os <- reorderMat(models)
+	models <- models[os$colIdx]
+	trans <- trans[os$colIdx, os$colIdx]
+	
+	
+	if (is.null(names(models)))
+		names(models) <- paste0("cluster ", 1:length(models))
+	
+	
+	rownames(trans) <- names(models)
+	colnames(trans) <- names(models)
+	ps <- getPS(models)[os$rowIdx,]
+	nbs <- getNBs(models)
+	lmar = 5
+	umar = 4
+	mmar = 1
+	library(fields)
+	col <- tim.colors()
+	layout(matrix(c(1,2,3,4), nrow=2), widths=widths, heights=heights)
 	par(mar=c(lmar,4,umar,1))
 	plotNBs(nbs, main="mean and sd", xlab="tot read count")
 	par(mar=c(lmar,1,umar,1), las=2)
@@ -131,6 +178,7 @@ plotNBs <- function(nbs, eps=0.2, xlab="count",...){
 	X <- as.numeric(rbind(xs+sds, xs+sds, NA))
 	lines(X, Y)
 	points(xs, ys)
+	abline(h=0, tly=2)
 }
 
 plotModels_old <- function(models, xnames=NA, dendro="both", norm=T,
