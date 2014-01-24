@@ -59,17 +59,17 @@ BEGIN_RCPP
 END_RCPP
 }
 // llik2posteriors
-Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector lmixcoeff, SEXP posteriors = R_NilValue, int nthreads = 1);
-RcppExport SEXP kfoots_llik2posteriors(SEXP lliksSEXP, SEXP lmixcoeffSEXP, SEXP posteriorsSEXP, SEXP nthreadsSEXP) {
+Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector mix_coeff, SEXP posteriors = R_NilValue, int nthreads = 1);
+RcppExport SEXP kfoots_llik2posteriors(SEXP lliksSEXP, SEXP mix_coeffSEXP, SEXP posteriorsSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
         Rcpp::RNGScope __rngScope;
         Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type lliks(lliksSEXP );
-        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type lmixcoeff(lmixcoeffSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type mix_coeff(mix_coeffSEXP );
         Rcpp::traits::input_parameter< SEXP >::type posteriors(posteriorsSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        Rcpp::List __result = llik2posteriors(lliks, lmixcoeff, posteriors, nthreads);
+        Rcpp::List __result = llik2posteriors(lliks, mix_coeff, posteriors, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);
@@ -296,6 +296,38 @@ BEGIN_RCPP
         Rcpp::traits::input_parameter< SEXP >::type ucs(ucsSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
         Rcpp::List __result = fitModels(counts, posteriors, models, ucs, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// fitNBs
+void fitNBs(Rcpp::NumericMatrix post, Rcpp::NumericVector mus, Rcpp::NumericVector rs, Rcpp::List ucs, int nthreads);
+RcppExport SEXP kfoots_fitNBs(SEXP postSEXP, SEXP musSEXP, SEXP rsSEXP, SEXP ucsSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type post(postSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type mus(musSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type rs(rsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::List >::type ucs(ucsSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        fitNBs(post, mus, rs, ucs, nthreads);
+    }
+    return R_NilValue;
+END_RCPP
+}
+// rowSumsDouble
+Rcpp::NumericVector rowSumsDouble(Rcpp::NumericMatrix mat, int nthreads = 1);
+RcppExport SEXP kfoots_rowSumsDouble(SEXP matSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type mat(matSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::NumericVector __result = rowSumsDouble(mat, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);

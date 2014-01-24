@@ -34,6 +34,7 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 	#all floating point numbers will be "floored" (not rounded)
 	storage.mode(counts) <- "integer"
 	
+	
 	models <- NULL
 	if (!is.numeric(k)){
 		if (!is.list(k)){
@@ -72,23 +73,25 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 	lliks <- matrix(0, nrow=k, ncol=nloci)
 	
 	
+	
 	loglik <- NA
 	converged <- FALSE
 	llhistory <- numeric(maxiter)
 	if (verbose) cat("starting main loop\n")
 	for (iter in 1:maxiter){
 		lLikMat(lliks=lliks, counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)
-
+	
 		initP <- getSteadyState(trans)
-
+		
 		res <- forward_backward(posteriors=posteriors, initP, trans, lliks, seqlens, nthreads=nthreads)
+		
 		new_loglik <- res$tot_llik
 		new_trans <- res$new_trans
 
 		if (verbose){
 			cat("Iteration: ", iter, ", log-likelihood: ", new_loglik, "\n")
 		}
-
+		
 		new_models <- fitModels(counts, posteriors, models, ucs=ucs, nthreads=nthreads)
 		
 		if(iter!=1 && new_loglik < loglik && !compare(new_loglik, loglik, tol))
@@ -118,9 +121,12 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 		names(models[[i]]$ps) <- rownames(counts)
 	}
 	
+	
 	list(models=models, trans=new_trans, loglik = loglik,
 	posteriors=posteriors, converged = converged, llhistory=llhistory[1:iter],
 	viterbi=viterbi_path)
+	
+	
 }
 
 #' Get a steady state of a transition matrix.

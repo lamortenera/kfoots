@@ -2,6 +2,7 @@
 #include <math.h> 
 #include <string>
 #include <stdexcept> 
+#include <iostream>
 
 extern "C" {
 	#include <R.h>
@@ -249,11 +250,11 @@ static void mnbrak(double* _ax, double* _bx, double* _cx, double* _fa, double* _
 
 //adapted from the R's library
 //it must hold: ax  < vx < bx
-static double Brent_fmin(double ax, double xx, double bx, double (*f)(double, void *), void *info, double tol, double* _fx)
+//I modified only the initializations so that it can use
+//all the information gained in mnbrak: the three initial
+//points and the three initial values.
+static double Brent_fmin(double ax, double xx, double bx, double fai, double fxi, double fbi, double (*f)(double, void *), void *info, double tol)
 {
-    if (ax > xx || xx > bx){
-		 throw std::invalid_argument("the three initial points must be in ascending order");
-	 }
     /*  c is the squared inverse of the golden ratio */
     const double c = (3. - sqrt(5.)) * .5;
 
@@ -268,19 +269,22 @@ static double Brent_fmin(double ax, double xx, double bx, double (*f)(double, vo
 
     a = ax;
     b = bx;
-    v = xx;
-    w = v;
-    x = v;
-
-    d = 0.;/* -Wall */
-    e = 0.;
-    if (_fx!=0){
-		 fx = *_fx;
-	 } else {
-		 fx = (*f)(x, info);
+    //done by me starts here -------
+    if (ax > xx || xx > bx){
+		 throw std::invalid_argument("the three initial points must be in ascending order");
 	 }
-    fv = fx;
-    fw = fx;
+    x = xx; fx = fxi;
+    if (fai > fbi){
+		 w = b; fw = fbi;
+		 v = a; fv = fai;
+	 } else {
+		 v = b; fv = fbi;
+		 w = a; fw = fai;
+	 }
+
+    d = DBL_MAX;
+    e = DBL_MAX;
+    //done by me ends here -------
     tol3 = tol / 3.;
 
 /*  main loop starts here ----------------------------------- */
@@ -308,13 +312,12 @@ static double Brent_fmin(double ax, double xx, double bx, double (*f)(double, vo
 	}
 
 	if (fabs(p) >= fabs(q * .5 * r) ||
-	    p <= q * (a - x) || p >= q * (b - x)) { /* a golden-section step */
+	    p <= q * (a - x) || p >= q * (b - x)) {/* a golden-section step */
 
 	    if (x < xm) e = b - x; else e = a - x;
 	    d = c * e;
 	}
 	else { /* a parabolic-interpolation step */
-
 	    d = p / q;
 	    u = x + d;
 
@@ -358,6 +361,7 @@ static double Brent_fmin(double ax, double xx, double bx, double (*f)(double, vo
     return x;
 }
 
+
 static double brent_wrapper(double x1, double x2, double (*f)(double, void *), void *info, double tol){
 	//find a bracketing triple using x1 and x2 as starting points
 	double x3, f1, f2, f3, tmp;
@@ -370,5 +374,5 @@ static double brent_wrapper(double x1, double x2, double (*f)(double, void *), v
 		SHFT(tmp, f1, f3, tmp)
 	}
 	
-	return Brent_fmin(x1, x2, x3, f, info, tol, &f2);
+	return Brent_fmin(x1, x2, x3, f1, f2, f3, f, info, tol);
 }

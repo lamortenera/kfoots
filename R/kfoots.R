@@ -13,22 +13,24 @@ NULL
 #' Wrapper around \code{\link{kfoots_core}}.
 #'
 #' It implements multiple starting points and outer parallelization. 
-#' @param counts see documentation for \code{\link{kfoots_core}}
+#' @param counts see documentation for \code{\link{kfoots}}
 #' @param models either the desired number of cluster, or a specific initial
 #' value for the models. In the second case and if \code{nstart}>1, only the first
 #' iteration will use the specified initial parameters.
 #' @param nstart number of starting points
 #' @param output print some output during execution
 #' @param cores number of cores to be used. It is used to run the different
-#' initializations of \code{kfoots_core} in parallel, \code{kfoots_core} is not parallelized yet.
+#' initializations of \code{kfoots} in parallel. Note that this option is  
+#' compatible with the \code{nthreads} option in \code{kfoots}, resulting in
+#' a maximum of \code{nthreads*cores} used cores.
 #' Setting \code{cores > nstart} is the same as setting \code{cores = nstart}.
-#' @param ... see documentation for \code{\link{kfoots_core}}
-#' @return see documentation for \code{\link{kfoots_core}}. The followings are additional
+#' @param ... see documentation for \code{\link{kfoots}}
+#' @return see documentation for \code{\link{kfoots}}. The followings are additional
 #' items added to the list:
 #' 	\item{converged_vs_total}{if \code{nstart} > 1, the total number of times the 
 #' algorithm converged vs the number of inizialisations.}
 #' @export
-kfoots <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
+kfoots_wrapper <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
 	converged <- 0
 	bestFoots <- NA
 	bestLlik <- -Inf
@@ -106,7 +108,7 @@ kfoots <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
 #'		\item{llhistory}{time series containing the log-likelihood of the
 #'			whole dataset across iterations}
 #' @export
-kfoots_core <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=1, addnoise=FALSE, verbose=FALSE){
+kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=1, addnoise=FALSE, verbose=FALSE){
 	if (verbose)
 		cat("kfoots with ", nthreads, " threads\n")
 	if (!is.matrix(counts))
@@ -131,7 +133,8 @@ kfoots_core <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthr
 	#precompute some stuff for optimization
 	ucs <- mapToUnique(colSumsInt(counts, nthreads))
 	mConst <- getMultinomConst(counts, nthreads)
-	 
+	
+	
 	if (is.null(models)){
 		#get initial random models. Need to be kind-of similar to
 		#the count matrix, cannot be completely random
@@ -156,8 +159,9 @@ kfoots_core <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthr
 	for (iter in 1:maxiter){
 		lLikMat(lliks=lliks, counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)
 		
-		res <- llik2posteriors(posteriors=posteriors, lliks, log(mix_coeff), nthreads=nthreads)
+		res <- llik2posteriors(posteriors=posteriors, lliks, mix_coeff, nthreads=nthreads)
 		new_loglik <- res$tot_llik
+		new_mix_coeff <- res$new_mix_coeff
 		
 		if (verbose){
 			cat("Iteration: ", iter, ", log-likelihood: ", new_loglik, "\n")
@@ -174,24 +178,16 @@ kfoots_core <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthr
 		if (addnoise){
 			new_models[[1]]$ps <- rep(1/footlen, footlen)
 		}
+
 		for (model in new_models){
 			if (any(model$ps < 0))
-				stop("something wrong in fitting the multinomial...")
+				stop("something went wrong in fitting the multinomial...")
 		}
 		
 		
-#~ 		for (m in 1:k){
-#~ 			if (!is.null(models[[m]]$tag) && models[[m]]$tag == "noise"){
-#~ 				new_models[[m]] <- fitNoiseModel(counts, posteriors[m,], models[[m]]$r, ucs=ucs, nthreads=nthreads)
-#~ 			} else {
-#~ 				new_models[[m]] <- fitModel(counts, posteriors[m,], models[[m]]$r, ucs=ucs, nthreads=nthreads)
-#~ 			}
-#~ 		}
 		if(iter!=1 && new_loglik < loglik && !compare(new_loglik, loglik, tol))
 			warning(paste0("decrease in log-likelihood at iteration ",iter))
 		
-		new_mix_coeff <- rowSums(posteriors)
-		new_mix_coeff <- new_mix_coeff / sum(new_mix_coeff)
 		
 		if (all(compare(mix_coeff, new_mix_coeff,tol))){
 			if (all(sapply(c(1:k), function(m) compareModels(models[[m]], new_models[[m]], tol)))){
@@ -231,16 +227,18 @@ rndModels <- function(counts, k, bgr_prior=0.5, ucs=NULL, nthreads=1){
 #seeds are columns of the count matrix which are guaranteed to be distinct.
 #they are used to initialize the models
 modelsFromSeeds <- function(counts, seeds, bgr_prior=0.5, ucs=NULL, nthreads=1){
-	models = list()
-	bgr = rep(1, ncol(counts))
-	for (i in seq_along(seeds)){
-		posteriors = bgr
-		posteriors[seeds[i]] = bgr[seeds[i]] + 1-bgr_prior
-		
-		models[[i]] = fitModel(counts, posteriors, ucs=ucs, nthreads=nthreads) 
-	}
 	
-	models
+	posteriors <- matrix(nrow=length(seeds), ncol=ncol(counts), bgr_prior)
+	#perturb row i at column seeds[i]
+	perturb_pos <- seeds*length(seeds) + 1:length(seeds)
+	posteriors[perturb_pos] <- 1 + bgr_prior
+	
+	#initialize empty models
+	models <- list()
+	for (i in seq_along(seeds)){ models[[i]] <- list(mu=-1, r=-1, ps=numeric(nrow(counts))) }
+	
+	#get fitted models
+	fitModels(counts, posteriors, models, ucs=ucs, nthreads=nthreads)
 }
 
 #find k unique seeds as fast as possible given that "counts" could be huge.
@@ -342,7 +340,8 @@ fitNoiseModel <- function(counts, posteriors=NULL, old_r=NULL, maxit=100, ucs=NU
 #' Maximum Likelihood Estimate for the parameters of a negative binomial distribution
 #' generating a specified vector of counts. The MLE for the negative binomial
 #' should not be used with a small number of datapoints, it is known to be
-#' biased.
+#' biased. Internally, this function is using the brent method to find the
+#' optimal dispersion parameter.
 #' @param counts a vector of counts. If a list is given, then it is assumed 
 #' 	to be the result of the function \code{mapToUnique(counts)}
 #' @param posteriors a vector specifying a weight for each count. The maximized
@@ -350,15 +349,13 @@ fitNoiseModel <- function(counts, posteriors=NULL, old_r=NULL, maxit=100, ucs=NU
 #' 	not specified, equal weights will be assumed
 #' @param old_r an initial value for the size parameter of the negative binomial.
 #' 	If not specified the methods of moments will be used for an initial guess.
-#' @param maxit maximum number of iterations of the gradient descent to find the
-#' 	best size parameter
 #' @param nthreads number of threads. Too many threads might worsen the 
 #' 	performance
 #' @return A list with the parameters of the negative binomial.
 #' 	\item{mu}{the mu parameter}
 #'		\item{r}{the size parameter}
 #' @export
-fitNB <- function(counts, posteriors=NULL, old_r=NULL, maxit=100, nthreads=1){
+fitNB <- function(counts, posteriors=NULL, old_r=NULL, nthreads=1){
 	#transforming the counts into unique counts
 	if (!is.list(counts)){
 		ucs <- mapToUnique(counts)

@@ -1,18 +1,24 @@
 #include <Rcpp.h>
 #include <boost/unordered_map.hpp>
 #include "core.hpp"
+#include <sys/time.h>
 
 // [[Rcpp::export]]
-Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector lmixcoeff, SEXP posteriors=R_NilValue, int nthreads=1){
+Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector mix_coeff, SEXP posteriors=R_NilValue, int nthreads=1){
 	if (Rf_isNull(posteriors)){
 		posteriors = Rcpp::NumericMatrix(lliks.nrow(), lliks.ncol());
 	}
 	
 	Rcpp::NumericMatrix tposteriors(posteriors);
+	//copy the vector (I hope...)
+	Rcpp::NumericVector new_mix_coeff(mix_coeff);
 	
-	double tot = llik2posteriors_core(asMat<double>(lliks), asVec<double>(lmixcoeff), asMat<double>(tposteriors), nthreads);
+	double tot = llik2posteriors_core(asMat<double>(lliks), asVec<double>(new_mix_coeff), asMat<double>(tposteriors), nthreads);
 	
-	return Rcpp::List::create(Rcpp::Named("posteriors")=posteriors, Rcpp::Named("tot_llik")=tot);
+	return Rcpp::List::create(
+									Rcpp::Named("posteriors")=posteriors,
+									Rcpp::Named("tot_llik")=tot,
+									Rcpp::Named("new_mix_coeff")=new_mix_coeff);
 }
 
 //' Group unique values of a vector
@@ -273,7 +279,29 @@ Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors,
 	
 	fitNBs_core(postMat, mus, rs, preproc, asMat(tmpNB, nmodels), nthreads);
 	fitMultinoms_core(countsMat, postMat, ps, nthreads);
-	
 	return writeModels(mus, rs, ps);
 }
 
+// [[Rcpp::export]]
+void fitNBs(
+						Rcpp::NumericMatrix post, 
+						Rcpp::NumericVector mus, 
+						Rcpp::NumericVector rs,
+						Rcpp::List ucs,
+						int nthreads){
+	
+	Rcpp::IntegerVector uniqueCS = ucs["values"];
+	Rcpp::IntegerVector map = ucs["map"];
+	NMPreproc preproc(asVec<int>(uniqueCS), asVec<int>(map), Vec<double>(0,0));
+	std::vector<double> tmpNB(uniqueCS.length()*mus.length());
+	fitNBs_core(asMat<double>(post), asVec<double>(mus), asVec<double>(rs), preproc, asMat<double>(tmpNB, mus.length()), nthreads);
+}
+
+// [[Rcpp::export]]
+Rcpp::NumericVector rowSumsDouble(Rcpp::NumericMatrix mat, int nthreads=1){
+	std::vector<long double> acc(mat.nrow(), 0);
+	rowSums<double, long double>(asMat<double>(mat), asVec<long double>(acc), nthreads);
+	Rcpp::NumericVector ret(mat.nrow());
+	for (int i = 0, e = mat.nrow(); i < e; ++i){ret[i] = acc[i];}
+	return ret;
+}

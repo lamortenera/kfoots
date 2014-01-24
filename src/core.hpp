@@ -71,7 +71,7 @@ static void colSums(Mat<TNumMat> mat, Vec<TNumVec> vec, int nthreads){
 	int nrow = mat.nrow;
 	int ncol = mat.ncol;
 	
-	#pragma omp parallel for default(none) firstprivate(cs, b, nrow, ncol) num_threads(std::max(1, nthreads))
+	#pragma omp parallel for schedule(static) num_threads(std::max(1, nthreads))
 	for (int col = 0; col < ncol; ++col){
 		TNumMat* ptr = b + col*nrow;
 		TNumMat tmp = 0;
@@ -81,6 +81,7 @@ static void colSums(Mat<TNumMat> mat, Vec<TNumVec> vec, int nthreads){
 		cs[col] = tmp;
 	}
 }
+
 
 //this is not going to work with vector<bool>,
 //because it doesn't contain a pointer to bools
@@ -361,7 +362,7 @@ static inline void fitNB_core(Vec<int> counts, Vec<double> posteriors, double* m
 	}
 	*mu = sum_cp/sum_p;
 	
-	if (initR < 0){
+	if (initR <= 0){
 		//find a suitable initial value for r:
 		//estimate and match empirical second moment
 		long double sum_c2p = 0;
@@ -580,40 +581,103 @@ static inline void fitMultinom_core(Mat<int> counts, Vec<double> posteriors, Vec
 	for (int row = 0; row < nrow; ++row){fit[row] /= sum;}
 }
 
-static inline double llik2posteriors_core(Mat<double> lliks, Vec<double> lmixcoeff, Mat<double> posteriors, int nthreads){
+
+//here vec must be clean at the beginning
+template<typename TNumMat, typename TNumVec>
+static void rowSums(Mat<TNumMat> mat, Vec<TNumVec> vec, int nthreads){
+	if (mat.nrow != vec.len) throw std::invalid_argument("provided vector has invalid length");
+
+	int nrow = mat.nrow;
+	int ncol = mat.ncol;
+	
+	#pragma omp parallel num_threads(std::max(1, nthreads))
+	{
+		std::vector<TNumVec> acc(nrow, 0);
+		TNumVec* accBegin = acc.data();
+		#pragma omp for schedule(static) nowait
+		for (int col = 0; col < ncol; ++col){
+			TNumMat* matCol = mat.colptr(col);
+			TNumVec* accIter = accBegin;
+			for (int row = 0; row < nrow; ++row){
+				*accIter++ += *matCol++;
+			}
+		}
+		#pragma omp critical
+		{
+			for (int row = 0; row < nrow; ++row){
+				vec[row] += acc[row];
+			}
+		}
+	}
+}
+
+
+//at the beginning mixcoeff contains the mixture coefficient,
+//at the end it contains the newly-trained coefficients
+static inline double llik2posteriors_core(Mat<double> lliks, Vec<double> mix_coeff, Mat<double> posteriors, int nthreads){
 	long double tot = 0;
 	int ncol = lliks.ncol;
 	int nrow = lliks.nrow;
 	
-	#pragma omp parallel for reduction(+:tot) num_threads(std::max(1, nthreads))
-	for (int col = 0; col < ncol; ++col){
-		double* lliksCol = lliks.colptr(col);
-		double* postCol = posteriors.colptr(col);
-		//adding the mixing coefficients
-		for (int row = 0; row < nrow; ++row){
-			lliksCol[row] += lmixcoeff[row];
+	std::vector<long double> mix_coeff_acc(nrow, 0);
+	
+	//transform the mix_coeff taking the log
+	for (int row = 0; row < nrow; ++row){
+		mix_coeff[row] = log(mix_coeff[row]);
+	}
+	
+	#pragma omp parallel num_threads(std::max(1, nthreads))
+	{
+		long double thread_tot = 0;
+		std::vector<long double> thread_mix_coeff_acc(nrow, 0); 
+		#pragma omp for nowait
+		for (int col = 0; col < ncol; ++col){
+			double* lliksCol = lliks.colptr(col);
+			double* postCol = posteriors.colptr(col);
+			//adding the mixing coefficients
+			for (int row = 0; row < nrow; ++row){
+				lliksCol[row] += mix_coeff[row];
+			}
+			//getting maximum
+			double cmax = lliksCol[0];
+			for (int row = 1; row < nrow; ++row){
+				if (lliksCol[row] > cmax) {
+					cmax = lliksCol[row];
+				} 
+			}
+			thread_tot += cmax;
+			double psum = 0;
+			//subtracting maximum and exponentiating sumultaneously
+			for (int row = 0; row < nrow; ++row){
+				double tmp = exp(lliksCol[row] - cmax);
+				postCol[row] = tmp;
+				psum += tmp;
+			}
+			thread_tot += log(psum);
+			for (int row = 0; row < nrow; ++row){
+				postCol[row] /= psum;
+				thread_mix_coeff_acc[row] += postCol[row];
+			}
 		}
-		//getting maximum
-		double cmax = lliksCol[0];
-		for (int row = 1; row < nrow; ++row){
-			if (lliksCol[row] > cmax) {
-				cmax = lliksCol[row];
-			} 
-		}
-		tot += cmax;
-		double psum = 0;
-		//subtracting maximum and exponentiating sumultaneously
-		for (int row = 0; row < nrow; ++row){
-			double tmp = exp(lliksCol[row] - cmax);
-			postCol[row] = tmp;
-			psum += tmp;
-		}
-		tot += log(psum);
-		double* postCol_it = postCol;
-		for (int row = 0; row < nrow; ++row, ++postCol_it){
-			*postCol_it /= psum;
+		//protected access to the shared variables
+		#pragma omp critical
+		{
+			tot += thread_tot;
+			for (int row = 0; row < nrow; ++row){
+				mix_coeff_acc[row] += thread_mix_coeff_acc[row];
+			}
 		}
 	}
+	
+	//normalizing mix coeff
+	long double norm = 0;
+	for (int row = 0; row < nrow; ++row){
+		norm += mix_coeff_acc[row];
+	}
+	for (int row = 0; row < nrow; ++row){
+		mix_coeff[row] = (double)(mix_coeff_acc[row]/norm);
+	}
+	
 	
 	return (double) tot;
 }
@@ -847,15 +911,17 @@ static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs,
 	
 	//for the fitNB function call, I didn't find anything better than
 	//nested parallel regions... this happens when nmod < nthreads
-	int threads_per_model = ceil(((double)nthreads)/nmod);
-	
+	int nthreads_outer = nmod > nthreads? nthreads : nmod;
+	int nthreads_inner = ceil(((double)nthreads)/nmod);
+	//std::cout << "Threads per model: " << threads_per_model << std::endl;
 	omp_set_num_threads(nthreads);
 	omp_set_nested(true);
 	//make sure we're not using more than nthreads threads
 	omp_set_dynamic(true);
 	//std::cout << "starting main loop" << std::endl;
 	//fitting the negative binomials
-	#pragma omp parallel for schedule(dynamic) num_threads(nmod)
+	
+	#pragma omp parallel for schedule(dynamic) num_threads(nthreads_outer)
 	for (int mod = 0; mod < nmod; ++mod){
 		//std::cout << "mod: " << mod << std::endl;
 		//set up the tmpNB matrix: it will contain the
@@ -869,7 +935,7 @@ static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs,
 		}
 		//call the optimization procedure. This will use up to threads_per_model threads
 		//std::cout << "calling fitNB_core" << std::endl;
-		fitNB_core(values, Vec<double>(tmpNBCol, tmpNB.nrow), &mus[mod], &rs[mod], rs[mod], threads_per_model);
+		fitNB_core(values, Vec<double>(tmpNBCol, tmpNB.nrow), &mus[mod], &rs[mod], rs[mod], nthreads_inner);
 	}
 }
 
@@ -918,76 +984,3 @@ static void fitMultinoms_core(Mat<int> counts, Mat<double> posteriors, Mat<doubl
 		}
 	}
 }
-
-/*
-static void fitModels_core(Mat<int> counts, Mat<double> posteriors, Vec<double> rs, Mat<double> ps, Vec<double> mus, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
-	int nrow = counts.nrow;
-	int ncol = counts.ncol;
-	int nmod = posteriors.nrow;
-	
-	int threads_per_model = ceil(((double)(nthreads))/nmod);
-	
-	Vec<int> map = preproc.map;
-	Vec<int> values = preproc.uniqueCS;
-	//make sure that tmpNB here has the desired format 
-	//(transpose of the one used in llikMat)
-	tmpNB.ncol = nmod;
-	tmpNB.nrow = values.len;
-	
-	//for the fitNB function call, I didn't find anything better than
-	//nested parallel regions...
-	omp_set_nested(true);
-	omp_set_dynamic(true);
-	
-	#pragma omp parallel num_threads(nthreads)
-	{
-		//fitting the negative binomial
-		#pragma omp for schedule(dynamic) nowait
-		for (int mod = 0; mod < nmod; ++mod){
-			//set up the tmpNB matrix: it will contain the
-			//posteriors wrt the unique counts
-			double* tmpNBCol = tmpNB.colptr(mod);
-			memset(tmpNBCol, 0, ncol*sizeof(double));
-			//this should be parallelized on the models, because otherwise tmpNBCol is
-			//shared
-			for (int col = 0; col < ncol; ++col){
-				tmpNBCol[map[col]] += posteriors(mod, col);
-			}
-			//call the optimization procedure
-			fitNB_core(values, Vec<double>(tmpNBCol, nrow), mus.ptr + mod, rs.ptr + mod, rs[mod], threads_per_model);
-		}
-		
-		//fitting the multinomial. 
-		std::vector<double> tmp_ps_std(nrow*nmod, 0);
-		Mat<double> tmp_ps = asMat(tmp_ps_std, nmod);
-		#pragma omp for schedule(static) nowait
-		for (int col = 0; col < ncol; ++col){
-			//This you could probably do better with BLAS...
-			double* postCol = posteriors.colptr(col);
-			int* countCol = counts.colptr(col);
-			for (int mod = 0; mod < nmod; ++mod, ++postCol){
-				double post = *postCol;
-				double* psCol = tmp_ps.colptr(mod);
-				for (int row = 0; row < nrow; ++row){
-					psCol[row] += countCol[row]*post;
-				}
-			}
-		}
-		#pragma omp critical
-		{
-			for (int i = 0, e = nrow*nmod; i < e; ++i){
-				ps[i] += tmp_ps[i];
-			}
-		}
-		//ps contains now the non-normalized optimal ps parameter, normalize!
-		//parallelization is probably overkill, but can it be worse than without?
-		#pragma omp for schedule(static)
-		for (int mod = 0; mod < nmod; ++mod){
-			double* psCol = ps.colptr(mod);
-			double sum = 0;
-			for (int row = 0; row < nrow; ++row){sum += psCol[row];}
-			for (int row = 0; row < nrow; ++row){psCol[row] /= sum;}
-		}
-	}
-}
-*/

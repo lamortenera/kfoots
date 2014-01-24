@@ -44,8 +44,8 @@ orderColumns <- function(mat) {
     .Call('kfoots_orderColumns', PACKAGE = 'kfoots', mat)
 }
 
-llik2posteriors <- function(lliks, lmixcoeff, posteriors = NULL, nthreads = 1L) {
-    .Call('kfoots_llik2posteriors', PACKAGE = 'kfoots', lliks, lmixcoeff, posteriors, nthreads)
+llik2posteriors <- function(lliks, mix_coeff, posteriors = NULL, nthreads = 1L) {
+    .Call('kfoots_llik2posteriors', PACKAGE = 'kfoots', lliks, mix_coeff, posteriors, nthreads)
 }
 
 #' Group unique values of a vector
@@ -106,5 +106,13 @@ fitNB_inner <- function(counts, posteriors, initR = -1) {
 
 fitModels <- function(counts, posteriors, models, ucs = NULL, nthreads = 1L) {
     .Call('kfoots_fitModels', PACKAGE = 'kfoots', counts, posteriors, models, ucs, nthreads)
+}
+
+fitNBs <- function(post, mus, rs, ucs, nthreads) {
+    invisible(.Call('kfoots_fitNBs', PACKAGE = 'kfoots', post, mus, rs, ucs, nthreads))
+}
+
+rowSumsDouble <- function(mat, nthreads = 1L) {
+    .Call('kfoots_rowSumsDouble', PACKAGE = 'kfoots', mat, nthreads)
 }
 
