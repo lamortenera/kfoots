@@ -91,14 +91,30 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
+// subsetM2U
+Rcpp::List subsetM2U(Rcpp::List ucs, Rcpp::IntegerVector colidxs);
+RcppExport SEXP kfoots_subsetM2U(SEXP ucsSEXP, SEXP colidxsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::List >::type ucs(ucsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type colidxs(colidxsSEXP );
+        Rcpp::List __result = subsetM2U(ucs, colidxs);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
 // getMultinomConst
-Rcpp::NumericVector getMultinomConst(Rcpp::IntegerMatrix counts, int nthreads = 1);
+Rcpp::NumericVector getMultinomConst(Rcpp::RObject counts, int nthreads = 1);
 RcppExport SEXP kfoots_getMultinomConst(SEXP countsSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
         Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::RObject >::type counts(countsSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
         Rcpp::NumericVector __result = getMultinomConst(counts, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
@@ -126,13 +142,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // colSumsInt
-Rcpp::IntegerVector colSumsInt(Rcpp::IntegerMatrix nums, int nthreads = 1);
+Rcpp::IntegerVector colSumsInt(Rcpp::RObject nums, int nthreads = 1);
 RcppExport SEXP kfoots_colSumsInt(SEXP numsSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
         Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type nums(numsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::RObject >::type nums(numsSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
         Rcpp::IntegerVector __result = colSumsInt(nums, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
@@ -195,13 +211,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // fitMultinom
-Rcpp::NumericVector fitMultinom(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors, int nthreads = 1);
+Rcpp::NumericVector fitMultinom(Rcpp::RObject counts, Rcpp::NumericVector posteriors, int nthreads = 1);
 RcppExport SEXP kfoots_fitMultinom(SEXP countsSEXP, SEXP posteriorsSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
         Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::RObject >::type counts(countsSEXP );
         Rcpp::traits::input_parameter< Rcpp::NumericVector >::type posteriors(posteriorsSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
         Rcpp::NumericVector __result = fitMultinom(counts, posteriors, nthreads);
@@ -212,13 +228,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // lLik
-Rcpp::NumericVector lLik(Rcpp::IntegerMatrix counts, Rcpp::List model, SEXP ucs = R_NilValue, SEXP mConst = R_NilValue, int nthreads = 1);
+Rcpp::NumericVector lLik(Rcpp::RObject counts, Rcpp::List model, SEXP ucs = R_NilValue, SEXP mConst = R_NilValue, int nthreads = 1);
 RcppExport SEXP kfoots_lLik(SEXP countsSEXP, SEXP modelSEXP, SEXP ucsSEXP, SEXP mConstSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
         Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::RObject >::type counts(countsSEXP );
         Rcpp::traits::input_parameter< Rcpp::List >::type model(modelSEXP );
         Rcpp::traits::input_parameter< SEXP >::type ucs(ucsSEXP );
         Rcpp::traits::input_parameter< SEXP >::type mConst(mConstSEXP );

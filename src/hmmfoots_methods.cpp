@@ -32,7 +32,7 @@ List forward_backward(NumericVector initP, NumericMatrix trans, NumericMatrix ll
 	Rcpp::NumericMatrix tposteriors(posteriors);
 	
 	NumericMatrix newTrans(trans.nrow(), trans.ncol());
-	double tot_llik = forward_backward_core(asVec<double>(initP), asMat<double>(trans), asMat<double>(lliks), asVec<int>(seqlens), asMat<double>(tposteriors), asMat<double>(newTrans), nthreads);
+	double tot_llik = forward_backward_core(asVec(initP), asMat(trans), asMat(lliks), asVec(seqlens), asMat(tposteriors), asMat(newTrans), nthreads);
 	return List::create(_("posteriors")=posteriors, _("tot_llik")=tot_llik, _("new_trans")=newTrans);
 }
 
@@ -115,6 +115,6 @@ List viterbi(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, Nume
 // [[Rcpp::export]]
 Rcpp::IntegerVector orderColumns(Rcpp::IntegerMatrix mat){
 	Rcpp::IntegerVector order(mat.ncol());
-	orderColumns_core(asMat<int>(mat), asVec<int>(order));
+	orderColumns_core(asMat(mat), asVec(order));
 	return order;
 }

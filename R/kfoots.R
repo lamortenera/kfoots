@@ -165,11 +165,6 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 		
 		if (verbose){
 			cat("Iteration: ", iter, ", log-likelihood: ", new_loglik, "\n")
-			for (i in seq_along(models)){
-				model <- models[[i]]
-				cat("Model ", i, ":\n")
-				cat("mu: ", model$mu, " r: ", model$r, " ps: ",  model$ps, "\n")
-			}
 			
 		}
 		
@@ -206,8 +201,9 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 	if (!converged)
 		warning(paste0("The algorithm did not converge after ", maxiter, " iterations (try to increase parameter maxiter)"))
 	
-	for (model in models)
-		names(model$ps) <- rownames(counts)
+	for (i in seq_along(models)){
+		names(models[[i]]$ps) <- rownames(counts)
+	}
 	
 	#same as: clusters <- apply(posteriors, 2, which.max)
 	#parallelization is probably overkill for this function...

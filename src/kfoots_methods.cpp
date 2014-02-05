@@ -13,7 +13,7 @@ Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector mix_co
 	//copy the vector (I hope...)
 	Rcpp::NumericVector new_mix_coeff(mix_coeff);
 	
-	double tot = llik2posteriors_core(asMat<double>(lliks), asVec<double>(new_mix_coeff), asMat<double>(tposteriors), nthreads);
+	double tot = llik2posteriors_core(asMat(lliks), asVec(new_mix_coeff), asMat(tposteriors), nthreads);
 	
 	return Rcpp::List::create(
 									Rcpp::Named("posteriors")=posteriors,
@@ -33,21 +33,38 @@ Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector mix_co
 Rcpp::List mapToUnique(Rcpp::IntegerVector values){
 	Rcpp::IntegerVector map(values.length());
 	
-	Vec<int> valuesVec = asVec<int>(values);
-	Vec<int> mapVec = asVec<int>(map);
+	Vec<int> valuesVec = asVec(values);
+	Vec<int> mapVec = asVec(map);
 	std::vector<int> uniqueCS;
 	map2unique_core(valuesVec, mapVec, uniqueCS);
 	
-	Rcpp::List list =  Rcpp::List::create(Rcpp::Named("values")=Rcpp::IntegerVector(uniqueCS.begin(),uniqueCS.end()), Rcpp::Named("map")=map);
-	return list;
+	return Rcpp::List::create(Rcpp::Named("values")=Rcpp::IntegerVector(uniqueCS.begin(),uniqueCS.end()), Rcpp::Named("map")=map);
 }
 
 
+// [[Rcpp::export]]
+Rcpp::List subsetM2U(Rcpp::List ucs, Rcpp::IntegerVector colidxs){
+	Rcpp::IntegerVector map = Rcpp::as<Rcpp::IntegerVector>(ucs["map"]);
+	Rcpp::IntegerVector values = Rcpp::as<Rcpp::IntegerVector>(ucs["values"]);
+	Rcpp::IntegerVector newmap(colidxs.length());
+	std::vector<int> newvalues;
+	subsetM2U_core(asVec(values), asVec(map), asVec(colidxs), newvalues, asVec(newmap));
+	
+	return Rcpp::List::create(Rcpp::Named("values")=Rcpp::IntegerVector(newvalues.begin(),newvalues.end()), Rcpp::Named("map")=newmap);
+}
+
 
 // [[Rcpp::export]]
-Rcpp::NumericVector getMultinomConst(Rcpp::IntegerMatrix counts, int nthreads=1){
-	Rcpp::NumericVector multinomConst(counts.ncol());
-	getMultinomConst_core(asMat<int>(counts), asVec<double>(multinomConst), nthreads);
+Rcpp::NumericVector getMultinomConst(Rcpp::RObject counts, int nthreads=1){
+	MatWrapper<int> mat = wrapMat<INTSXP>(counts);
+	Rcpp::NumericVector multinomConst(mat.ncol);
+	if (mat.type == "matrix"){
+		getMultinomConst_core(mat.matrix, asVec(multinomConst), nthreads);
+	} else if (mat.type == "gapmat"){
+		getMultinomConst_core(mat.gapmat, asVec(multinomConst), nthreads);
+	} else {
+		getMultinomConst_core(mat.swmat, asVec(multinomConst), nthreads);
+	}
 	return multinomConst;
 }
 
@@ -75,20 +92,25 @@ Rcpp::NumericVector sumAt(Rcpp::NumericVector values, Rcpp::IntegerVector map, i
 
 
 // [[Rcpp::export]]
-Rcpp::IntegerVector colSumsInt(Rcpp::IntegerMatrix nums, int nthreads=1){
-	Mat<int> mat = asMat<int>(nums);
+Rcpp::IntegerVector colSumsInt(Rcpp::RObject nums, int nthreads=1){
+	MatWrapper<int> mat = wrapMat<INTSXP>(nums);
 	Rcpp::IntegerVector ret(mat.ncol);
-	Vec<int> vec = asVec<int>(ret);
-	
-	colSums(mat, vec, nthreads);
+	Vec<int> vec = asVec(ret);
+	if (mat.type == "matrix"){
+		colSums(mat.matrix, vec, nthreads);
+	} else if (mat.type == "gapmat"){
+		colSums(mat.gapmat, vec, nthreads);
+	} else {
+		colSums(mat.swmat, vec, nthreads);
+	}
 	return ret;
 }
 
 // [[Rcpp::export]]
 Rcpp::NumericVector colSumsDouble(Rcpp::NumericMatrix nums, int nthreads=1){
-	Mat<double> mat = asMat<double>(nums);
+	Mat<double> mat = asMat(nums);
 	Rcpp::NumericVector ret(mat.ncol);
-	Vec<double> vec = asVec<double>(ret);
+	Vec<double> vec = asVec(ret);
 	
 	colSums(mat, vec, nthreads);
 	return ret;
@@ -97,42 +119,27 @@ Rcpp::NumericVector colSumsDouble(Rcpp::NumericMatrix nums, int nthreads=1){
 // [[Rcpp::export]]
 Rcpp::NumericVector nbinomLoglik(Rcpp::IntegerVector counts, double mu, double r, int nthreads=1){
 	Rcpp::NumericVector res(counts.length());
-	nbinomLoglik_core(asVec<int>(counts), mu, r, asVec<double>(res), std::max(nthreads, 1));
+	nbinomLoglik_core(asVec(counts), mu, r, asVec(res), std::max(nthreads, 1));
 	return res;
 }
 
 // [[Rcpp::export]]
 double optimFun(Rcpp::IntegerVector counts, double mu, double r, Rcpp::NumericVector posteriors, int nthreads=1){
-	return optimFun_core(asVec<int>(counts), mu, r, asVec<double>(posteriors), std::max(nthreads, 1));
+	return optimFun_core(asVec(counts), mu, r, asVec(posteriors), std::max(nthreads, 1));
 }
 
 // [[Rcpp::export]]
-Rcpp::NumericVector fitMultinom(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors, int nthreads=1){
-	Rcpp::NumericVector fit(counts.nrow());
-	fitMultinom_core(asMat<int>(counts), asVec<double>(posteriors), asVec<double>(fit), std::max(nthreads, 1));
-	return fit;
-}
-
-static inline NegMultinom parseModel(Rcpp::List model){
-	Rcpp::NumericVector ps = model["ps"];
-	return NegMultinom(model["r"], model["mu"], Vec<double>(ps.begin(), ps.length()));
-}
-
-static inline void parseModels(Rcpp::List models, Vec<double> mus, Vec<double> rs, Mat<double> ps){
-	unsigned int footsize = sizeof(double)*ps.nrow;
-	for (int i = 0; i < models.length(); ++i){
-		Rcpp::List model = models[i];
-		if (mus.ptr != 0){
-			mus[i] = model["mu"]; 
-		}
-		if (rs.ptr != 0){
-			rs[i] = model["r"];
-		}
-		if (ps.ptr != 0){
-			Rcpp::NumericVector currps = model["ps"];
-			memcpy(ps.colptr(i), currps.begin(), footsize);
-		}
+Rcpp::NumericVector fitMultinom(Rcpp::RObject counts, Rcpp::NumericVector posteriors, int nthreads=1){
+	MatWrapper<int> mat = wrapMat<INTSXP>(counts);
+	Rcpp::NumericVector fit(mat.nrow);
+	if (mat.type=="matrix"){
+		fitMultinom_core(mat.matrix, asVec(posteriors), asVec(fit), std::max(nthreads, 1));
+	} else if (mat.type=="gapmat"){
+		fitMultinom_core(mat.gapmat, asVec(posteriors), asVec(fit), std::max(nthreads, 1));
+	} else {
+		fitMultinom_core(mat.swmat, asVec(posteriors), asVec(fit), std::max(nthreads, 1));
 	}
+	return fit;
 }
 
 static inline Rcpp::List writeModels(Vec<double> mus, Vec<double> rs, Mat<double> ps){
@@ -148,34 +155,40 @@ static inline Rcpp::List writeModels(Vec<double> mus, Vec<double> rs, Mat<double
 }
 
 // [[Rcpp::export]]
-Rcpp::NumericVector lLik(Rcpp::IntegerMatrix counts, Rcpp::List model, 
+Rcpp::NumericVector lLik(Rcpp::RObject counts, Rcpp::List model, 
 		SEXP ucs = R_NilValue,
 		SEXP mConst = R_NilValue,
 		int nthreads=1){
 	
-	
 	if (Rf_isNull(ucs)){
-		ucs = (SEXP) mapToUnique(colSumsInt(counts, nthreads));
+		ucs = Rcpp::wrap(mapToUnique(colSumsInt(counts, nthreads)));
 	}
 	if (Rf_isNull(mConst)){
-		mConst = (SEXP) getMultinomConst(counts, nthreads);
+		mConst = Rcpp::wrap(getMultinomConst(counts, nthreads));
 	}
 	
 	Rcpp::List ucs_list(ucs); 
-	Rcpp::IntegerVector uniqueCS = ucs_list["values"];
 	Rcpp::IntegerVector map = ucs_list["map"];
+	Rcpp::IntegerVector uniqueCS = ucs_list["values"];
 	Rcpp::NumericVector multinomConst(mConst);
 	
-	Mat<int> countsMat = asMat<int>(counts);
-	Rcpp::NumericVector lliks(counts.ncol());
-	Vec<double> lliksVec = asVec<double>(lliks);
-	NegMultinom NMmodel = parseModel(model);
+	MatWrapper<int> countsMat = wrapMat<INTSXP>(counts);
+	Rcpp::NumericVector lliks(countsMat.ncol);
+	Vec<double> lliksVec = asVec(lliks);
+	double mu, r; double* ps; int footlen;
+	parseModel(model, &mu, &r, &ps, &footlen);
 	
 	//re-format preprocessing data if present, otherwise, create it.
 	//If created here they will not be persistent
-	NMPreproc preproc(asVec<int>(uniqueCS), asVec<int>(map), asVec<double>(multinomConst));
+	NMPreproc preproc(asVec(uniqueCS), asVec(map), asVec(multinomConst));
 	
-	NMmodel.getLlik(countsMat, lliksVec, preproc, nthreads);
+	if (countsMat.type == "matrix"){
+		getLlik(countsMat.matrix, mu, r, Vec<double>(ps, footlen), lliksVec, preproc, nthreads);
+	} else if (countsMat.type == "gapmat"){
+		getLlik(countsMat.gapmat, mu, r, Vec<double>(ps, footlen), lliksVec, preproc, nthreads);
+	} else {
+		getLlik(countsMat.swmat, mu, r, Vec<double>(ps, footlen), lliksVec, preproc, nthreads);
+	}
 	
 	return lliks;
 }
@@ -200,9 +213,9 @@ Rcpp::NumericMatrix lLikMat(Rcpp::IntegerMatrix counts, Rcpp::List models,
 	Rcpp::IntegerVector uniqueCS = ucs_list["values"];
 	Rcpp::IntegerVector map = ucs_list["map"];
 	Rcpp::NumericVector multinomConst(mConst);
-	NMPreproc preproc(asVec<int>(uniqueCS), asVec<int>(map), asVec<double>(multinomConst));
+	NMPreproc preproc(asVec(uniqueCS), asVec(map), asVec(multinomConst));
 	
-	Mat<int> countsMat = asMat<int>(counts);
+	Mat<int> countsMat = asMat(counts);
 	//parsing the models
 	int nmodels = models.length();
 	int footlen = countsMat.nrow;
@@ -221,7 +234,7 @@ Rcpp::NumericMatrix lLikMat(Rcpp::IntegerMatrix counts, Rcpp::List models,
 	}
 	Rcpp::NumericMatrix tlliks(lliks);
 	
-	lLikMat_core(countsMat, mus, rs, ps, asMat<double>(tlliks), preproc, asMat(tmpNB, uniqueCS.length()), nthreads);
+	lLikMat_core(countsMat, mus, rs, ps, asMat(tlliks), preproc, asMat(tmpNB, uniqueCS.length()), nthreads);
 	
 	return lliks;
 }
@@ -229,7 +242,7 @@ Rcpp::NumericMatrix lLikMat(Rcpp::IntegerMatrix counts, Rcpp::List models,
 // [[Rcpp::export]]
 Rcpp::IntegerVector pwhichmax(Rcpp::NumericMatrix posteriors, int nthreads=1){
 	Rcpp::IntegerVector clusters(posteriors.ncol());
-	pwhichmax_core(asMat<double>(posteriors), asVec<int>(clusters), nthreads);
+	pwhichmax_core(asMat(posteriors), asVec(clusters), nthreads);
 	return clusters;
 }
 
@@ -237,7 +250,7 @@ Rcpp::IntegerVector pwhichmax(Rcpp::NumericMatrix posteriors, int nthreads=1){
 Rcpp::List fitNB_inner(Rcpp::IntegerVector counts, Rcpp::NumericVector posteriors, double initR=-1){
 	double mu = -1;
 	double r = -1;
-	fitNB_core(asVec<int>(counts), asVec<double>(posteriors), &mu, &r, initR);
+	fitNB_core(asVec(counts), asVec(posteriors), &mu, &r, initR);
 	
 	return Rcpp::List::create(Rcpp::Named("mu")=mu, Rcpp::Named("r")=r);
 }
@@ -262,10 +275,10 @@ Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors,
 	Rcpp::List ucs_list(ucs); 
 	Rcpp::IntegerVector uniqueCS = ucs_list["values"];
 	Rcpp::IntegerVector map = ucs_list["map"];
-	NMPreproc preproc(asVec<int>(uniqueCS), asVec<int>(map), Vec<double>(0,0));
+	NMPreproc preproc(asVec(uniqueCS), asVec(map), Vec<double>(0,0));
 	
-	Mat<int> countsMat = asMat<int>(counts);
-	Mat<double> postMat = asMat<double>(posteriors);
+	Mat<int> countsMat = asMat(counts);
+	Mat<double> postMat = asMat(posteriors);
 	//parsing the models
 	std::vector<double> musSTD(nmodels);
 	std::vector<double> rsSTD(nmodels);
@@ -292,15 +305,15 @@ void fitNBs(
 	
 	Rcpp::IntegerVector uniqueCS = ucs["values"];
 	Rcpp::IntegerVector map = ucs["map"];
-	NMPreproc preproc(asVec<int>(uniqueCS), asVec<int>(map), Vec<double>(0,0));
+	NMPreproc preproc(asVec(uniqueCS), asVec(map), Vec<double>(0,0));
 	std::vector<double> tmpNB(uniqueCS.length()*mus.length());
-	fitNBs_core(asMat<double>(post), asVec<double>(mus), asVec<double>(rs), preproc, asMat<double>(tmpNB, mus.length()), nthreads);
+	fitNBs_core(asMat(post), asVec(mus), asVec(rs), preproc, asMat(tmpNB, mus.length()), nthreads);
 }
 
 // [[Rcpp::export]]
 Rcpp::NumericVector rowSumsDouble(Rcpp::NumericMatrix mat, int nthreads=1){
 	std::vector<long double> acc(mat.nrow(), 0);
-	rowSums<double, long double>(asMat<double>(mat), asVec<long double>(acc), nthreads);
+	rowSums<double, long double>(asMat(mat), asVec(acc), nthreads);
 	Rcpp::NumericVector ret(mat.nrow());
 	for (int i = 0, e = mat.nrow(); i < e; ++i){ret[i] = acc[i];}
 	return ret;

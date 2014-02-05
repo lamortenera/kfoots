@@ -1,110 +1,10 @@
+#include "array.cpp"
 #include <omp.h>
 #include <algorithm> 
 #include <unordered_map>
 #include <Rcpp.h>
 #include <math.h>
 #include "optim.cpp"
-
-//Matrix and vector wrappers for pointers
-template<typename TType>
-struct Vec {
-	TType* ptr;
-	int len;
-	
-	Vec(){}
-	
-	Vec(TType* _ptr, int _len):
-		ptr(_ptr), len(_len){}
-	
-	inline TType operator[] (int i) const {return ptr[i];}
-	inline TType& operator[] (int i){return ptr[i];}
-	
-	Vec subset(int start, int end){
-		return Vec(ptr + start, end - start);
-	}
-};
-
-template<typename TType>
-struct Mat {
-	TType* ptr;
-	int nrow;
-	int ncol;
-	
-	Mat(){}
-	
-	Mat(TType* _ptr, int _nrow, int _ncol):
-		ptr(_ptr), nrow(_nrow), ncol(_ncol){}
-	
-	inline TType operator[] (int i) const {return ptr[i];}
-	inline TType& operator[] (int i){return ptr[i];}
-	
-	inline TType operator() (int row, int col) const {return ptr[row + col*nrow];}
-	inline TType& operator() (int row, int col) {return ptr[row + col*nrow];}
-	
-	Mat subsetCol(int colStart, int colEnd){
-		return Mat(ptr + nrow*colStart, nrow, colEnd-colStart);
-	}
-	
-	
-	inline TType get(int row, int col){
-		return ptr[row + col*nrow];
-	}
-	
-	inline TType* colptr(int col){
-		return ptr + col*nrow;
-	}
-	
-	inline Vec<TType> getCol(int col){
-		return Vec<TType>(ptr + col*nrow, nrow);
-	}
-};
-
-
-
-
-template<typename TNumMat, typename TNumVec>
-static void colSums(Mat<TNumMat> mat, Vec<TNumVec> vec, int nthreads){
-	if (mat.ncol != vec.len) throw std::invalid_argument("provided vector has invalid length");
-
-	TNumVec*  cs = vec.ptr;
-	TNumMat* b = mat.ptr;
-	int nrow = mat.nrow;
-	int ncol = mat.ncol;
-	
-	#pragma omp parallel for schedule(static) num_threads(std::max(1, nthreads))
-	for (int col = 0; col < ncol; ++col){
-		TNumMat* ptr = b + col*nrow;
-		TNumMat tmp = 0;
-		for (int row = 0; row < nrow; ++row){
-			tmp += *ptr++;
-		}
-		cs[col] = tmp;
-	}
-}
-
-
-//this is not going to work with vector<bool>,
-//because it doesn't contain a pointer to bools
-template<typename TType>
-inline Vec<TType> asVec(std::vector<TType>& v){
-	return Vec<TType>(v.data(), v.size());
-}
-
-template<typename TType, int RType>
-inline Vec<TType> asVec(Rcpp::Vector<RType>& v){
-	return Vec<TType>(v.begin(), v.length());
-}
-
-template<typename TType, int RType>
-inline Mat<TType> asMat(Rcpp::Matrix<RType>& m){
-	return Mat<TType>(m.begin(), m.nrow(), m.ncol());
-}
-
-template<typename TType>
-inline Mat<TType> asMat(std::vector<TType>& v, int ncol){
-	if (v.size() % ncol != 0) throw std::invalid_argument("number of columns must be a divisor of vector length");
-	return Mat<TType>(v.data(), v.size()/ncol, ncol);
-}
 
 
 
@@ -134,9 +34,9 @@ static inline bool avatarSorter(const Avatar& a, const Avatar& b){
 	return b.count > a.count;
 }
 
-//uniqueCS should be an empty vector. It also works if map and values 
-//wrap the same pointer (so if values is a temporary vector that later becomes map).
-static void map2unique_core(Vec<int> values, Vec<int> map, std::vector<int>& uniqueCS){
+//values is the input variable, map and uvalues are the output variables
+//map and values can also wrap the same pointer
+static void map2unique_core(Vec<int> values, Vec<int> map, std::vector<int>& uvalues){
 	//this section is not parallelized:
 	//it should be done just once and the running time
 	//should be very low, independent on the number of rows.
@@ -151,49 +51,82 @@ static void map2unique_core(Vec<int> values, Vec<int> map, std::vector<int>& uni
 	}
 	std::sort(avatars.begin(), avatars.end(), avatarSorter);
 	
-	//fill in uniqueCS and map
+	//fill in uniquevalues and map
 	int lastVal = avatars[0].count;
-	uniqueCS.push_back(lastVal);
+	uvalues.push_back(lastVal);
 	map[avatars[0].pos] = 0;
 	
 	for (int i = 0, e = avatars.size(); i < e; ++i){
 		Avatar& a = avatars[i];
 		if (a.count != lastVal) {
 			lastVal = a.count;
-			uniqueCS.push_back(lastVal);
+			uvalues.push_back(lastVal);
 		}
-		map[a.pos] = uniqueCS.size()-1;
+		map[a.pos] = uvalues.size()-1;
 	}
 }
 
-static void getMultinomConst_core(Mat<int> counts, Vec<double> multinomConst, int nthreads){
+//subset is a index vector passed from R that we don't want to copy, so subtract 1 to all indices
+static void subsetM2U_core(Vec<int> uvalues, Vec<int> map, Vec<int> subset, std::vector<int>& newuvalues, Vec<int> newmap){
+	if (uvalues.len > 2*subset.len){
+		/* the subset is very small, it is not worth going through the "old" unique values */
+		//call the standard map2unique_core, but prepare the newmap vector
+		for (int i = 0, e = subset.len; i < e; ++i){
+			newmap[i] = uvalues[map[subset[i]-1]];
+		}
+		map2unique_core(newmap, newmap, newuvalues);
+	} else {
+		/* use the "old" unique values as a hashmap to avoid sorting */
+		std::vector<int> hashmap(uvalues.len, -1);
+		//mark with a 1 the counts that are present
+		for (int i = 0, e = subset.len; i < e; ++i){
+			hashmap[map[subset[i]-1]] = 1;
+		}
+		//fill the new uvalues vector and update the indices in hashmap
+		for (int i = 0, e = uvalues.len; i < e; ++i){
+			if (hashmap[i] > 0){
+				newuvalues.push_back(uvalues[i]);
+				hashmap[i] = newuvalues.size() - 1;
+			}
+		}
+		//set up the newmap vector
+		for (int i = 0, e = subset.len; i < e; ++i){
+			newmap[i] = hashmap[map[subset[i]-1]];
+		}
+	}
+}
+
+
+//it can be implemented specifically for SWMat. The calls to 
+//the lgamma functions would be the same, but less calls to lfact
+//and faster colSums
+template<template <typename> class TMat>
+static void getMultinomConst_core(TMat<int> counts, Vec<double> multinomConst, int nthreads){
 	//compute the log multinomial for each column
 	CachedLFact lfact(0.75);
-	int* i_counts = counts.ptr;
-	double* i_mc = multinomConst.ptr;
 	int ncol = counts.ncol;
 	int nrow = counts.nrow;
 	
-	#pragma omp parallel for default(none) firstprivate(lfact, i_counts, i_mc, nrow, ncol) num_threads(std::max(1, nthreads))
+	#pragma omp parallel for firstprivate(lfact) num_threads(std::max(1, nthreads))
 	for (int col = 0; col < ncol; ++col){
-		int* i_ccounts = i_counts + col*nrow;
+		int* countsCol = counts.colptr(col);
 		double tmp = 0;
 		int colsum = 0;
 		for (int row = 0; row < nrow; ++row){
-			colsum += *i_ccounts;
-			tmp -= lfact(*i_ccounts++);
+			int c = countsCol[row];
+			colsum += c;
+			tmp -= lfact(c);
 		}
-		i_mc[col] = tmp + lfact(colsum);
+		multinomConst[col] = tmp + lfact(colsum);
 	}
 }
 
-static inline void nbinomLoglik_core(Vec<int> counts, double mu, double r, Vec<double> lliks, int nthreads){
+template<template <typename> class TVec>
+static inline void nbinomLoglik_core(TVec<int> counts, double mu, double r, Vec<double> lliks, int nthreads){
 	int e = counts.len;
-	double* i_lliks = lliks.ptr;
-	int* i_counts = counts.ptr;
-	#pragma omp parallel for default(none) firstprivate(e, i_lliks, i_counts, mu, r) num_threads(nthreads)
+	#pragma omp parallel for num_threads(nthreads)
 	for (int i = 0; i < e; ++i){
-		i_lliks[i] = Rf_dnbinom_mu(i_counts[i], r, mu, 1);
+		lliks[i] = Rf_dnbinom_mu(counts[i], r, mu, 1);
 	}
 }
 
@@ -201,17 +134,13 @@ static inline void nbinomLoglik_core(Vec<int> counts, double mu, double r, Vec<d
 static inline double optimFun_core(Vec<int> counts, double mu, double r, Vec<double> posteriors, int nthreads){
 	
 	int e = counts.len;
-	double* i_post = posteriors.ptr;
-	int* i_counts = counts.ptr;
 	long double llik = 0;
-	#pragma omp parallel for default(none) firstprivate(e, i_post, i_counts, mu, r) reduction(+:llik) num_threads(nthreads)
+	#pragma omp parallel for reduction(+:llik) num_threads(nthreads)
 	for (int i = 0; i < e; ++i){
-		double tmp = Rf_dnbinom_mu(i_counts[i], r, mu, 1)*(i_post[i]);
-		if (!std::isnan(tmp)){ llik += tmp; }
+		if (posteriors[i] > 0){
+			llik += Rf_dnbinom_mu(counts[i], r, mu, 1)*(posteriors[i]);
+		}
 	}
-	//std::cout << "OptimFun_core @: " << r << "->" << -llik <<std::endl;
-	//std::cout << -llik << std::endl;
-	//std::cout << "optimFun_core @: " << r << "->" << -llik <<std::endl;
 	return (double)llik;
 }
 
@@ -226,50 +155,7 @@ struct optimData {
 	int nthreads;
 };
 
-//optimization function: it's very fast but it does not work
-/* It's a problem of numerical stability...
- negative log likelihood function without the term due to the factorials
- * (as they don't play a role in the optimization)
- 
-static double fn(int n, double* logr, void* data){
-	optimData* info = (optimData*) data;
-	double mu = info->mu;
-	double spost = info->spost;
-	double ret;
-	double r = exp(*logr);
-	if (!std::isfinite(r)){//r==+Inf, poisson case
-		ret = spost*mu*(1 - log(mu));
-		
-	} else if (r == 0){//degenerate distribution concentrated at 0
-		if (mu == 0) ret = 0; 
-		else ret = INFINITY;
-	} else {//normal case
-		ret = spost*(-Rf_lgammafn(r) + mu*log(mu/(mu+r)) + r*log(r/(mu+r)));
-		
-		long double part2 = 0;
-		int e = info->counts.len;
-		double* post = info->posteriors.ptr;
-		int* counts = info->counts.ptr;
-		
-		
-		for (int i = 0; i < e; ++i){
-			double tmp = Rf_lgammafn(counts[i]+r)*post[i];
-			if (!std::isnan(tmp)){ part2 += tmp; }
-		}
-		
-		ret += part2;
-	}
-	
-	std::cout << "fn @: " << r << "->" << -ret <<std::endl;
-	
-		
-	return -ret;
-}
-*/
-
-//optimization function (for 2 different APIs)
-
-//brent API
+//optim fun for Brent
 static double fn1d(double logr, void* data){
 	optimData* info = (optimData*) data;
 	double mu = info->mu;
@@ -283,102 +169,63 @@ static double fn1d(double logr, void* data){
 	if (r == 0){//degenerate distribution concentrated at 0
 		if (mu == 0) llik = 0; 
 		else llik = -INFINITY;
-	} else if (!std::isfinite(r)){//r==+Inf, poisson case
-
-		#pragma omp parallel for reduction(+:llik) num_threads(nthreads)
+	} else if (!std::isfinite(mu*r)){
+		//r==+Inf is the poisson case
+		//here we are doing mu*r==+Inf as a workaround when r is close to
+		//the maximum double (more or less 1e+308), because the function
+		//Rf_dnbinom_mu has problem to handle those cases. Note that the
+		//maximum mu is constrained by the maximum int (because mu is an average)
+		//so mu < 2*10^9 and r > 1e+299
+		#pragma omp parallel for schedule(static, 1) reduction(+:llik) num_threads(nthreads)
 		for (int i = 0; i < e; ++i){
-			double tmp = Rf_dpois(counts[i], mu, 1)*post[i];
-			if (!std::isnan(tmp)){ llik += tmp; }
+			if (post[i] > 0){
+				llik += Rf_dpois(counts[i], mu, 1)*post[i];
+			}
 		}
 	} else {//normal case
-		
-		#pragma omp parallel for reduction(+:llik) num_threads(nthreads)
+		#pragma omp parallel for schedule(static, 1) reduction(+:llik) num_threads(nthreads)
 		for (int i = 0; i < e; ++i){
-			double tmp = Rf_dnbinom_mu(counts[i], r, mu, 1)*post[i];
-			if (!std::isnan(tmp)){ llik += tmp; }
+			if (post[i] > 0){
+				llik += Rf_dnbinom_mu(counts[i], r, mu, 1)*post[i];
+			}
 		}
 	}
-	//std::cout << "fn @: " << r << "->" << -llik <<std::endl;
 	
 	return -llik;
 }
 
-//lbfgsf API
-static double fn(int n, double* logr, void* data){
-	return fn1d(*logr, data);
-}
-
-
-//derivative of the optimization function
-static void dfn(int n, double* x, double* ret, void* data){
-	/*
-	optimData* info = (optimData*) data;
-	double mu = info->mu;
-	double r = exp(*x);
-	double spost = info->spost;
-	
-	double part1 = spost*(-Rf_digamma(r) + log(r/(mu+r)));
-	
-	long double part2 = 0;
-	int e = info->counts.len;
-	double* post = info->posteriors.ptr;
-	int* counts = info->counts.ptr;
-	
-	
-	for (int i = 0; i < e; ++i){
-		double tmp = Rf_digamma(counts[i]+r)*post[i];
-		if (!std::isnan(tmp)){ part2 += tmp; }
-	}
-	
-	*ret = -(part1 + part2)*r;
-	*/
-	//something is wrong with the real derivative... no idea what
-	//0.001 is the same parameter used by R
-	
-	double x1 = *x + 0.001;
-	double x2 = *x - 0.001;
-	double nd = (fn(n, &x1, data) - fn(n, &x2, data))/0.002;
-	//double r = exp(*x);
-	
-	//std::cout << "dfn: " << r << "->" << nd << std::endl;
-	
-	*ret = nd;
-	
-	
-	
-	if(!std::isfinite(*ret))
-		throw std::invalid_argument("non-finite value in derivative of optimization function");
-}
 
 static inline void fitNB_core(Vec<int> counts, Vec<double> posteriors, double* mu, double* r, double initR, int nthreads=1){
+	//tolerance
+	double tol=1e-8;
 	//get weighted average
+	long double sum_c2p = 0;
 	long double sum_cp = 0;
 	long double sum_p = 0;
 	int* c = counts.ptr;
 	double* p = posteriors.ptr;
 	for (int i = 0, e = counts.len; i < e; ++i, ++c, ++p){
-		sum_cp += (*c) * (*p);
-		sum_p += *p;
+		double P = *p, C = *c;
+		sum_p += P; P *= C;
+		sum_cp += P;
+		sum_c2p += P*C;
 	}
 	*mu = sum_cp/sum_p;
 	
-	if (initR <= 0){
-		//find a suitable initial value for r:
-		//estimate and match empirical second moment
-		long double sum_c2p = 0;
-		c = counts.ptr;
-		p = posteriors.ptr;
-		for (int i = 0, e = counts.len; i < e; ++i, ++c, ++p){
-			sum_c2p += (*c) * (*c) * (*p);
-		}
-		initR = (*mu) * (*mu) / (sum_c2p/sum_p  -  *mu * (*mu + 1));
+	//the r that matches the sample variance
+	double guessR = initR = (*mu) * (*mu) / (sum_c2p/sum_p  -  *mu * (*mu + 1));
+	//low sample variance -> poisson case
+	if (guessR < 0 || !std::isfinite(guessR)){ guessR = DBL_MAX; }
+	if (initR < 0 || !std::isfinite(initR)){ initR = guessR; }
+	
+	//optimization is done in the log space to avoid boundary constraints
+	guessR = log(guessR);
+	initR = log(initR);
+	//initial points too close together
+	if (fabs(guessR - initR) < tol*fabs(guessR + initR)/2){
+		initR = guessR*(1 - tol);
 	}
 	
-	if (initR < 0 || !std::isfinite(initR)){
-		//either the second moment matched above does not have overdispersion
-		// or the initial value was +Inf
-		initR = DBL_MAX; //poisson case
-	}
 	
 	optimData info;
 	info.counts = counts;
@@ -386,16 +233,8 @@ static inline void fitNB_core(Vec<int> counts, Vec<double> posteriors, double* m
 	info.mu = *mu;
 	info.spost = sum_p;
 	info.nthreads = nthreads;
-	//default used by R
-	//optimization is done in the log space
-	initR = log(initR);
 	
-	//double maxfn = 0;
-	
-	//lbfgsb_wrapper(&fn, &dfn, &info, &initR, &maxfn, 0, 0);
-	//bfgs_wrapper(&fn, &dfn, &info, &initR, &maxfn);
-	//log(r1), log(r1) + 0.1, fn, &info, tol
-	initR = brent_wrapper(initR, initR + 0.1, fn1d, &info, 1e-8);
+	initR = brent_wrapper(initR, guessR, fn1d, &info, tol);
 	
 	*r = exp(initR);
 }
@@ -414,67 +253,92 @@ struct NMPreproc {
 	}
 };
 
-struct NegMultinom {
-	//associated preprocessing data
-	typedef NMPreproc Preproc;
+static inline void parseModel(Rcpp::List model, double* mu, double* r, double** ps, int* footlen){
+	Rcpp::NumericVector pstmp = model["ps"];
 	
-	//model parameters
-	int len;
-	double r;
-	double mu;
-	double* p;
+	*mu = model["mu"];
+	*r = model["r"];
+	*ps = pstmp.begin();
+	*footlen = pstmp.length();
+}
+
+//that's bad, you should change this and use parseModel
+static inline void parseModels(Rcpp::List models, Vec<double> mus, Vec<double> rs, Mat<double> ps){
+	unsigned int footsize = sizeof(double)*ps.nrow;
+	for (int i = 0; i < models.length(); ++i){
+		Rcpp::List model = models[i];
+		if (mus.ptr != 0){
+			mus[i] = model["mu"]; 
+		}
+		if (rs.ptr != 0){
+			rs[i] = model["r"];
+		}
+		if (ps.ptr != 0){
+			Rcpp::NumericVector currps = model["ps"];
+			memcpy(ps.colptr(i), currps.begin(), footsize);
+		}
+	}
+}
+
+
+
+template<template <typename> class TMat>
+static void getLlik(TMat<int> counts, double mu, double r, Vec<double> ps, Vec<double> llik, NMPreproc& preproc, int nthreads){
+	int len = ps.len;
+	if (len != counts.nrow) throw std::invalid_argument("the counts matrix doesn't have the right number of rows");
+	if (counts.ncol != preproc.map.len) throw std::invalid_argument("the preprocessed data were not computed on the same count matrix");
 	
-	NegMultinom(double _r, double _mu, Vec<double> _p){
-		r = _r;
-		mu = _mu;
-		p = _p.ptr;
-		len = _p.len;
+	nthreads = std::max(1, nthreads);
+	
+	//pre-compute all the log(p) 
+	std::vector<double> logP(len);
+	for (int i = 0; i < len; ++i){
+		logP[i] = log(ps[i]);
 	}
 	
 	
-	void getLlik(Mat<int> counts, Vec<double> llik, Preproc& preproc, int nthreads){
-		if (len != counts.nrow) throw std::invalid_argument("the counts matrix doesn't have the right number of rows");
-		if (counts.ncol != preproc.map.len) throw std::invalid_argument("the preprocessed data were not computed on the same count matrix");
-		
-		nthreads = std::max(1, nthreads);
+	//iterate through each column
+	const int* map = preproc.map.ptr;
+	const double* mtnm = preproc.multinomConst.ptr;
+	const double* logp = logP.data();
+	double* llikptr = llik.ptr;
+	const int ncol = counts.ncol;
+	const int nrow = counts.nrow;
+	const int* uniqueCS = preproc.uniqueCS.ptr;
+	const int nUCS = preproc.uniqueCS.len;
+	//temporary storage for the negative binomial
+	std::vector<double> std_tmpNB(nUCS);
+	double* tmpNB = std_tmpNB.data();
+	
+	
+	#pragma omp parallel num_threads(nthreads)
+	{
 		//compute all the log neg binom on the unique column sums
-		std::vector<double> logNBinom(preproc.uniqueCS.len);
-		nbinomLoglik_core(preproc.uniqueCS, mu, r, asVec<double>(logNBinom), nthreads);
-		
-		//pre-compute all the log(p) 
-		std::vector<double> logP(len);
-		for (int i = 0; i < len; ++i){
-			logP[i] = log(p[i]);
+		#pragma omp for schedule(static)
+		for (int c = 0; c < nUCS; ++c){
+			tmpNB[c] = Rf_dnbinom_mu(uniqueCS[c], r, mu, 1);
 		}
 		
-		//iterate through each column
-		double* i_nb = logNBinom.data();
-		int* i_counts = counts.ptr;
-		double* i_mtnm = preproc.multinomConst.ptr;
-		int* i_map = preproc.map.ptr;
-		double* i_logp = logP.data();
-		double* i_llik = llik.ptr;
-		int ncol = counts.ncol;
-		int nrow = counts.nrow;
-				
-		#pragma omp parallel for default(none) firstprivate(i_nb, i_counts, i_mtnm, i_map, i_logp, i_llik, ncol, nrow) num_threads(nthreads)
+		//contribution of the multinomial
+		#pragma omp for schedule(static)
 		for (int col = 0; col < ncol; ++col){
-			double tmp = i_nb[i_map[col]] + i_mtnm[col];
-			int* i_ccounts = i_counts + col*nrow;
-			double* i_llogp = i_logp;
-			for (int row = 0; row < nrow; ++row, ++i_ccounts, ++i_llogp){
-				double ttemp = (*i_ccounts)*(*i_llogp);
-				if (!std::isnan(ttemp)){
-					tmp += ttemp;
+			double tmp = tmpNB[map[col]] + mtnm[col];
+			int* currcount = counts.colptr(col);
+			const double* currlogp = logp;
+			for (int row = 0; row < nrow; ++row, ++currcount, ++currlogp){
+				int c = *currcount;
+				if (c != 0){
+					tmp += c*(*currlogp);
 				}
 			}
-			i_llik[col] = tmp;
+			llikptr[col] = tmp;
 		}
 	}
-};
+}
 
 
-static void lLikMat_core(Mat<int> counts, Vec<double> mus, Vec<double> rs, Mat<double> ps, Mat<double> llik, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
+template<template <typename> class TMat>
+static void lLikMat_core(TMat<int> counts, Vec<double> mus, Vec<double> rs, Mat<double> ps, Mat<double> llik, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
 	if (rs.len != mus.len || mus.len != ps.ncol || ps.nrow != counts.nrow) throw std::invalid_argument("incoherent models provided");
 	if (counts.ncol != preproc.map.len) throw std::invalid_argument("the preprocessed data were not computed on the same count matrix");
 	
@@ -523,9 +387,9 @@ static void lLikMat_core(Mat<int> counts, Vec<double> mus, Vec<double> rs, Mat<d
 				double tmp = tmpNBcol[mod] + mtnm;
 				double* logp = logPs.colptr(mod);
 				for (int row = 0; row < nrow; ++row){
-					double ttemp = countsCol[row]*logp[row];
-					if (!std::isnan(ttemp)){
-						tmp += ttemp;
+					int c = countsCol[row];
+					if (c != 0){
+						tmp += c*logp[row];
 					}
 				}
 				llikCol[mod] = tmp;
@@ -534,82 +398,39 @@ static void lLikMat_core(Mat<int> counts, Vec<double> mus, Vec<double> rs, Mat<d
 	}
 }
 
-
-static inline void fitMultinom_core(Mat<int> counts, Vec<double> posteriors, Vec<double> fit, int nthreads){
-	int* i_counts = counts.ptr;
-	double* i_post = posteriors.ptr;
-	double* i_fit = fit.ptr;
+//fit vector should be empty at the beginning
+template<template <typename> class TMat>
+static inline void fitMultinom_core(TMat<int> counts, Vec<double> posteriors, Vec<double> fit, int nthreads){
 	int nrow = counts.nrow;
 	int ncol = counts.ncol;
 		
-	if (nthreads > 1){
-		#pragma omp parallel firstprivate(i_counts, i_post, i_fit, nrow, ncol) num_threads(nthreads)
-		{
-			std::vector<double> acc(nrow, 0);
-			double* i_locFit = acc.data();
-			#pragma omp for nowait
-			for (int col = 0; col < ncol; ++col){
-				double post = i_post[col];
-				if (post != 0){
-					int* i_colCounts = i_counts + col*nrow;
-					for (int row = 0; row < nrow; ++row){
-						i_locFit[row] += i_colCounts[row]*post;
-					}
-				}
-			}
-			#pragma omp critical
-			{
+	#pragma omp parallel num_threads(nthreads)
+	{
+		std::vector<double> locFit(nrow, 0);
+		#pragma omp for nowait
+		for (int col = 0; col < ncol; ++col){
+			double post = posteriors[col];
+			if (post > 0){
+				int* countsCol = counts.colptr(col);
 				for (int row = 0; row < nrow; ++row){
-					i_fit[row] += i_locFit[row];
+					locFit[row] += countsCol[row]*post;
 				}
 			}
 		}
-	} else {
-		
-		for (int col = 0; col < ncol; ++col){
-			double post = i_post[col];
-			if (post != 0){
-				for (int row = 0; row < nrow; ++row, ++i_counts){
-					i_fit[row] += *i_counts*post;
-				}
-			} else { i_counts += nrow; }
+		#pragma omp critical
+		{
+			for (int row = 0; row < nrow; ++row){
+				fit[row] += locFit[row];
+			}
 		}
 	}
+	
 	
 	double sum = 0;
 	for (int row = 0; row < nrow; ++row){sum += fit[row];}
 	for (int row = 0; row < nrow; ++row){fit[row] /= sum;}
 }
 
-
-//here vec must be clean at the beginning
-template<typename TNumMat, typename TNumVec>
-static void rowSums(Mat<TNumMat> mat, Vec<TNumVec> vec, int nthreads){
-	if (mat.nrow != vec.len) throw std::invalid_argument("provided vector has invalid length");
-
-	int nrow = mat.nrow;
-	int ncol = mat.ncol;
-	
-	#pragma omp parallel num_threads(std::max(1, nthreads))
-	{
-		std::vector<TNumVec> acc(nrow, 0);
-		TNumVec* accBegin = acc.data();
-		#pragma omp for schedule(static) nowait
-		for (int col = 0; col < ncol; ++col){
-			TNumMat* matCol = mat.colptr(col);
-			TNumVec* accIter = accBegin;
-			for (int row = 0; row < nrow; ++row){
-				*accIter++ += *matCol++;
-			}
-		}
-		#pragma omp critical
-		{
-			for (int row = 0; row < nrow; ++row){
-				vec[row] += acc[row];
-			}
-		}
-	}
-}
 
 
 //at the beginning mixcoeff contains the mixture coefficient,
@@ -682,7 +503,7 @@ static inline double llik2posteriors_core(Mat<double> lliks, Vec<double> mix_coe
 	return (double) tot;
 }
 
-static inline double  forward_backward_core(Vec<double> initP, Mat<double> trans, Mat<double> lliks, Vec<int> seqlens, Mat<double> posteriors, Mat<double> new_trans, int nthreads){
+static inline double forward_backward_core(Vec<double> initP, Mat<double> trans, Mat<double> lliks, Vec<int> seqlens, Mat<double> posteriors, Mat<double> new_trans, int nthreads){
 	nthreads = std::max(1, nthreads);
 	
 	int nrow = lliks.nrow;
@@ -839,62 +660,6 @@ static inline double  forward_backward_core(Vec<double> initP, Mat<double> trans
 }
 
 
-struct colPtr {
-	int* ptr;
-	int colref;
-	colPtr(int* _ptr, int _colref): ptr(_ptr), colref(_colref){}
-};
-
-struct colSorter{
-	int nrow;
-	
-	inline bool operator() (const colPtr& cp1, const colPtr& cp2) {
-		int* ptr1 = cp1.ptr;
-		int* ptr2 = cp2.ptr;
-		
-		for (int i = 0; i < nrow; ++i){
-			int diff = ptr2[i] - ptr1[i];
-			if (diff!=0){
-				return diff > 0;
-			}
-		}
-		
-		return false;
-	}
-	
-	colSorter(int _nrow) : nrow(_nrow){}
-};
-
-static inline void orderColumns_core(Mat<int> mat, Vec<int> vec){
-	int nc = mat.ncol;
-	colSorter srtr(mat.nrow);
-	colPtr foo(0,0);
-	std::vector<colPtr> cols(nc, foo);
-	for (int i = 0; i < nc; ++i){cols[i] = colPtr(mat.colptr(i), i);}
-	std::sort(cols.begin(), cols.end(), srtr);
-	for (int i = 0; i < nc; ++i){vec[i] = cols[i].colref+1;}
-}
-
-static inline void pwhichmax_core(Mat<double> posteriors, Vec<int> clusters, int nthreads){
-	int ncol = posteriors.ncol;
-	int nrow = posteriors.nrow;
-	#pragma omp parallel for num_threads(nthreads)
-	for (int col = 0; col < ncol; ++col){
-		double* postCol = posteriors.colptr(col);
-		double max = *postCol;
-		int whichmax = 1;
-		for (int row = 1; row < nrow; ++row){
-			++postCol;
-			if (*postCol > max){
-				max = *postCol;
-				whichmax = row + 1;
-			}
-		}
-		clusters[col] = whichmax;
-	}
-}
-
-
 static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
 	//std::cout << "fitNBs_core" << std::endl;
 	int ncol = posteriors.ncol;
@@ -923,7 +688,6 @@ static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs,
 	
 	#pragma omp parallel for schedule(dynamic) num_threads(nthreads_outer)
 	for (int mod = 0; mod < nmod; ++mod){
-		//std::cout << "mod: " << mod << std::endl;
 		//set up the tmpNB matrix: it will contain the
 		//posteriors wrt the unique counts
 		double* tmpNBCol = tmpNB.colptr(mod);
@@ -939,8 +703,8 @@ static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs,
 	}
 }
 
-static void fitMultinoms_core(Mat<int> counts, Mat<double> posteriors, Mat<double> ps, int nthreads){
-	//std::cout << "fitMultinom_core" << std::endl;
+template<template <typename> class TMat>
+static void fitMultinoms_core(TMat<int> counts, Mat<double> posteriors, Mat<double> ps, int nthreads){
 	int nmod = posteriors.nrow;
 	int nrow = counts.nrow;
 	int ncol = counts.ncol;

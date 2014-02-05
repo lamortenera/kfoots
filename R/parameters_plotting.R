@@ -39,7 +39,7 @@ plotColorKey <- function(zlim, n=20, col=heat.colors(n), side=4, lab="color key"
 	}
 	image(x,y,mat, xaxt="n", yaxt="n",col=col,xlab=NA, ylab=NA, ...)
 	axis(side=side)
-	if (!is.na(lab)){
+	if (!is.null(lab) && !is.na(lab)[1]){
 		mtext(lab, side=side, line=2)
 	}
 	
@@ -55,7 +55,15 @@ getMeanMatrix <- function(models){
 
 
 reorderMat <- function(models){
-	mps <- getMeanMatrix(models)
+	mps <- log(getMeanMatrix(models))
+	if (min(mps)==-Inf){
+	#replacing -Inf with a reasonable low value
+		tmpmps <- mps
+		mx <- max(mps) #max value
+		tmpmps[tmpmps==-Inf] <- max(mps)
+		mn <- min(tmpmps) #lowest value when there are no -Inf
+		mps[mps==-Inf] <- mn - (mx - mn)/length(mps) #pseudocount: a bit less than the minumum
+	}
 	list(colIdx=hclust(dist(mps))$order, rowIdx=hclust(dist(t(mps)))$order)
 }
 
@@ -81,21 +89,76 @@ plotModels <- function(models, mix_coeff, widths=c(0.2,0.5,0.2,0.1)){
 	
 	
 	
-	ps <- getPS(models)
+	ps <- getPS(models)[os$rowIdx,]
 	nbs <- getNBs(models)
 	layout(matrix(c(1,2,3,4), nrow=1), widths=widths)
 	par(mar=c(5,4,4,1))
 	plotNBs(nbs, main="mean and sd", xlab="tot read count")
 	library(fields)
-	col <- tim.colors()
-	par(mar=c(5,1,4,1))
-	plotMatrix(t(ps), main="multinomial ps", zlim=c(0,1), yticks=NA, col=col)
+	col <- tim.colors(100)
+	par(mar=c(5,1,4,1), las=2)
+	plotMatrix(t(ps), main="multinomial ps", yticks=NA, col=col)
 	par(mar=c(5,1,4,1))
 	plotMatrix(as.matrix(mix_coeff), main="mix. coeff.", zlim=c(0,1), yticks=NA, xticks=NA, col=col)
-	par(mar=c(5,1,4,3.5))
+	par(mar=c(5,1,4,3.5), las=0)
 	plotColorKey(c(0,1), col=col, n=64)
 	
 }
+
+
+plotModels2 <- function(models, mix_coeff, widths=c(0.3,0.5,0.2), heights=c(0.1,0.9)){
+	os <- reorderMat(models)
+	models <- models[os$colIdx]
+	mix_coeff <- mix_coeff[os$colIdx]
+	
+	if (is.null(names(models)))
+		names(models) <- paste0("cluster ", 1:length(models))
+	
+	
+	library(fields)
+	col <- tim.colors(100)
+	mns <- getMeanMatrix(models)[,os$rowIdx]
+	nbs <- getNBs(models)
+	layout(matrix(c(1,2,3,4,5,6), nrow=2), widths=widths, heights=heights)
+	
+	
+	umar <- 2
+	colkeylowmar <- 2
+	lmar <- 1
+	rmar <- 1
+	hmodlabelmar <- 6
+	clustlabelmar <- 6
+	middlemar <- 1
+	
+	#NB params title
+	par(mar=c(0, clustlabelmar, umar+1, 1))
+	plot.new()
+	title(main="Tot read count\nmean and sd")
+	#mtext(, side=3, line=0)
+	
+	#NB params
+	par(mar=c(hmodlabelmar, clustlabelmar,1,1), las=1)
+	plotNBs(nbs, xlab="tot read count")
+	
+	#Means matrix color key
+	mnsrange <- range(mns)
+	par(mar=c(colkeylowmar,lmar,umar,rmar))
+	plotColorKey(mnsrange, col=col, n=64, side=1, main="Mean counts", lab=NULL)
+	
+	#Means matrix
+	par(mar=c(hmodlabelmar,lmar,middlemar,rmar), las=2)
+	plotMatrix(mns, yticks=NA, col=col)
+	
+	#mix coeff color key
+	mcrange <- range(mix_coeff)
+	par(mar=c(colkeylowmar,lmar,umar,rmar), las=1)
+	plotColorKey(mcrange, col=col, n=64, side=1, main="Mix. coeff.", lab=NULL)
+	
+	#mix coeff
+	par(mar=c(hmodlabelmar,lmar,middlemar,rmar))
+	plotMatrix(as.matrix(mix_coeff), yticks=NA, xticks=NA, col=col)
+}
+
 
 plotHMM <- function(models, trans, widths=c(0.2,0.35,0.35,0.1)){
 	os <- reorderMat(models)
@@ -114,7 +177,7 @@ plotHMM <- function(models, trans, widths=c(0.2,0.35,0.35,0.1)){
 	lmar = 5
 	umar = 4
 	library(fields)
-	col <- tim.colors()
+	col <- tim.colors(100)
 	layout(matrix(c(1,2,3,4), nrow=1), widths=widths)
 	par(mar=c(lmar,4,umar,1))
 	plotNBs(nbs, main="mean and sd", xlab="tot read count")
@@ -127,58 +190,58 @@ plotHMM <- function(models, trans, widths=c(0.2,0.35,0.35,0.1)){
 	
 }
 
-plotHMM2 <- function(models, trans, widths=c(0.6,0.4), heights=c(0.1, 0.9)){
+plotHMM2 <- function(models, trans, widths=c(0.3,0.35,0.35), heights=c(0.1,0.9)){
 	os <- reorderMat(models)
 	models <- models[os$colIdx]
 	trans <- trans[os$colIdx, os$colIdx]
-	
 	
 	if (is.null(names(models)))
 		names(models) <- paste0("cluster ", 1:length(models))
 	
 	
-	rownames(trans) <- names(models)
-	colnames(trans) <- names(models)
-	ps <- getPS(models)[os$rowIdx,]
-	nbs <- getNBs(models)
-	lmar = 5
-	umar = 4
-	mmar = 1
 	library(fields)
-	col <- tim.colors()
-	layout(matrix(c(1,2,3,4), nrow=2), widths=widths, heights=heights)
-	par(mar=c(lmar,4,umar,1))
-	plotNBs(nbs, main="mean and sd", xlab="tot read count")
-	par(mar=c(lmar,1,umar,1), las=2)
-	plotMatrix(t(ps), main="multinomial probs.", zlim=c(0,1), yticks=NA, col=col)
-	par(mar=c(lmar,1,umar,1))
-	plotMatrix(trans, main="trans. probs.", zlim=c(0,1), yticks=NA, col=col)
-	par(mar=c(lmar,1,umar,3.5), las=0)
-	plotColorKey(c(0,1), col=col, n=64)
+	col <- tim.colors(100)
+	mns <- getMeanMatrix(models)[,os$rowIdx]
+	nbs <- getNBs(models)
+	layout(matrix(c(1,2,3,4,5,6), nrow=2), widths=widths, heights=heights)
 	
-}
-
-plotNBs <- function(nbs, eps=0.2, xlab="count",...){
-	nbs <- nbs[,ncol(nbs):1]
-	ys <- seq(0,1, length.out=ncol(nbs))
-	xs <- nbs[1,]
-	sds <- sqrt(xs + (xs^2)/nbs[2,])
-	xlim <- c(min(xs-sds), max(xs+sds))
-	spacer <- 1/(2*(ncol(nbs)-1))
-	ylim <- c(0-spacer,1+spacer)
-	par(yaxs="i")
-	plot(NULL, xlim=xlim, ylim=ylim, yaxt="n", ylab=NA, xlab=xlab, ...)
-	axis(side=2, tick=F, at=ys, labels=colnames(nbs))
-	X <- as.numeric(rbind(xs-sds, xs+sds, NA))
-	Y <- as.numeric(rbind(ys, ys, NA))
-	lines(X, Y)
-	X <- as.numeric(rbind(xs-sds, xs-sds, NA))
-	Y <- as.numeric(rbind(ys - spacer*eps, ys + spacer*eps, NA))
-	lines(X, Y)
-	X <- as.numeric(rbind(xs+sds, xs+sds, NA))
-	lines(X, Y)
-	points(xs, ys)
-	abline(h=0, tly=2)
+	
+	umar <- 2
+	colkeylowmar <- 2
+	lmar <- 1
+	rmar <- 1
+	hmodlabelmar <- 6
+	clustlabelmar <- 6
+	middlemar <- 1
+	
+	#NB params title
+	par(mar=c(0, clustlabelmar, umar+1, 1))
+	plot.new()
+	title(main="Tot read count\nmean and sd")
+	#mtext(, side=3, line=0)
+	
+	#NB params
+	par(mar=c(hmodlabelmar, clustlabelmar,1,1), las=1)
+	plotNBs(nbs, xlab="tot read count")
+	
+	#Means matrix color key
+	mnsrange <- range(mns)
+	par(mar=c(colkeylowmar,lmar,umar,rmar))
+	plotColorKey(mnsrange, col=col, n=64, side=1, main="Mean counts", lab=NULL)
+	
+	#Means matrix
+	par(mar=c(hmodlabelmar,lmar,middlemar,rmar), las=2)
+	plotMatrix(mns, yticks=NA, col=col)
+	
+	#mix coeff color key
+	transrange <- range(trans)
+	par(mar=c(colkeylowmar,lmar,umar,rmar), las=1)
+	plotColorKey(transrange, col=col, n=64, side=1, main="Transitions", lab=NULL)
+	
+	#trans
+	colnames(trans) <- names(models)
+	par(mar=c(hmodlabelmar,lmar,middlemar,rmar), las=2)
+	plotMatrix(trans, yticks=NA, col=col)
 }
 
 plotModels_old <- function(models, xnames=NA, dendro="both", norm=T,
@@ -280,3 +343,20 @@ compareMarginals <- function(counts, models, mix_coeff, quant=.95){
 		legend("topright", legend=c("expected", "observed"), lty=c(2, 1))
 	}
 }
+
+matchClust <- function(clust1, clust2){
+	library(lpSolve)
+	
+	maxlev <- max(clust1, clust2)
+	
+	f1 <- factor(clust1, levels=1:maxlev)
+	f2 <- factor(clust2, levels=1:maxlev)
+	
+	mat <- table(f1, f2)
+	perm <- lp.assign(mat, direction="max")$solution
+	minDist <- 1 - sum(mat[as.logical(perm)])/length(clust1)
+	
+	
+	list(distance=minDist, permutation=apply(perm,2,which.max))
+}
+
