@@ -6,7 +6,8 @@
 #include <math.h>
 #include "optim.cpp"
 
-
+//this will slow down a bit, but it's safe... hopefully they will fix it in R 3.1...
+#define lognbinom(c, mu, r) std::isfinite(mu*r)?Rf_dnbinom_mu(c, r, mu, 1):Rf_dpois(c, mu, 1)
 
 struct CachedLFact{
 	std::unordered_map<int, double> cache;
@@ -126,7 +127,7 @@ static inline void nbinomLoglik_core(TVec<int> counts, double mu, double r, Vec<
 	int e = counts.len;
 	#pragma omp parallel for num_threads(nthreads)
 	for (int i = 0; i < e; ++i){
-		lliks[i] = Rf_dnbinom_mu(counts[i], r, mu, 1);
+		lliks[i] = lognbinom(counts[i], mu, r);
 	}
 }
 
@@ -166,28 +167,10 @@ static double fn1d(double logr, void* data){
 	int nthreads = info->nthreads;
 	
 	long double llik = 0;
-	if (r == 0){//degenerate distribution concentrated at 0
-		if (mu == 0) llik = 0; 
-		else llik = -INFINITY;
-	} else if (!std::isfinite(mu*r)){
-		//r==+Inf is the poisson case
-		//here we are doing mu*r==+Inf as a workaround when r is close to
-		//the maximum double (more or less 1e+308), because the function
-		//Rf_dnbinom_mu has problem to handle those cases. Note that the
-		//maximum mu is constrained by the maximum int (because mu is an average)
-		//so mu < 2*10^9 and r > 1e+299
-		#pragma omp parallel for schedule(static, 1) reduction(+:llik) num_threads(nthreads)
-		for (int i = 0; i < e; ++i){
-			if (post[i] > 0){
-				llik += Rf_dpois(counts[i], mu, 1)*post[i];
-			}
-		}
-	} else {//normal case
-		#pragma omp parallel for schedule(static, 1) reduction(+:llik) num_threads(nthreads)
-		for (int i = 0; i < e; ++i){
-			if (post[i] > 0){
-				llik += Rf_dnbinom_mu(counts[i], r, mu, 1)*post[i];
-			}
+	#pragma omp parallel for schedule(static, 1) reduction(+:llik) num_threads(nthreads)
+	for (int i = 0; i < e; ++i){
+		if (post[i] > 0){
+			llik += lognbinom(counts[i], mu, r)*post[i];
 		}
 	}
 	
@@ -316,7 +299,7 @@ static void getLlik(TMat<int> counts, double mu, double r, Vec<double> ps, Vec<d
 		//compute all the log neg binom on the unique column sums
 		#pragma omp for schedule(static)
 		for (int c = 0; c < nUCS; ++c){
-			tmpNB[c] = Rf_dnbinom_mu(uniqueCS[c], r, mu, 1);
+			tmpNB[c] = lognbinom(uniqueCS[c], mu, r);
 		}
 		
 		//contribution of the multinomial
@@ -365,7 +348,7 @@ static void lLikMat_core(TMat<int> counts, Vec<double> mus, Vec<double> rs, Mat<
 		#pragma omp for schedule(static) collapse(2) nowait
 		for (int p = 0; p < nmodels; ++p){
 			for (int c = 0; c < nUCS; ++c){
-				tmpNB(p,c) = Rf_dnbinom_mu(uniqueCS[c], rs[p], mus[p], 1);
+				tmpNB(p,c) = lognbinom(uniqueCS[c], mus[p], rs[p]);
 			}
 		}
 		
