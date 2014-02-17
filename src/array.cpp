@@ -163,38 +163,6 @@ struct GapMat {
 	}
 };
 
-//a bridge between R's object and C++ templates for matrix data types
-template <typename TMat>
-struct MatWrapper {
-	int nrow;
-	int ncol;
-	Mat<TMat> matrix;
-	GapMat<TMat> gapmat;
-	SWMat<TMat> swmat;
-	std::string type;
-	
-	MatWrapper(Mat<TMat> amat){
-		type = "matrix";
-		matrix = amat;
-		nrow = matrix.nrow;
-		ncol = matrix.ncol;
-	}
-	
-	MatWrapper(GapMat<TMat> amat){
-		type = "gapmat";
-		gapmat = amat;
-		nrow = gapmat.nrow;
-		ncol = gapmat.ncol;
-	}
-	
-	MatWrapper(SWMat<TMat> amat){
-		type = "swmat";
-		swmat = amat;
-		nrow = swmat.nrow;
-		ncol = swmat.ncol;
-	}
-};
-
 
 /* from std and rcpp datastructures extract pointers and wrap them */
 
@@ -237,32 +205,6 @@ inline SWMat< CType(RType) > asSWMat(Rcpp::Vector<RType>& v, int nrow, int step)
 	return SWMat< CType(RType) >(v.begin(), nrow, (v.length() - nrow)/step + 1, step);
 }
 
-template <int RType>
-inline MatWrapper< CType(RType) > wrapMat(Rcpp::RObject rmat){
-	if (TYPEOF(rmat)==RType){
-		
-		Rcpp::Matrix<RType> tmp = Rcpp::as<Rcpp::Matrix<RType> >(rmat);
-		return MatWrapper< CType(RType) >(asMat(tmp));
-	
-	} else if (rmat.inherits("gapmat")){
-		
-		Rcpp::List list = Rcpp::as<Rcpp::List>(rmat);
-		Rcpp::Matrix<RType> mat = Rcpp::as<Rcpp::Matrix<RType> >(list["mat"]);
-		Rcpp::IntegerVector cols = Rcpp::as<Rcpp::IntegerVector>(list["colset"]);
-		int nrow = list["nrow"];
-		return MatWrapper< CType(RType) >(GapMat< CType(RType) >(mat.begin(), cols.begin(), nrow, cols.length()));
-	
-	} else if (!rmat.inherits("swmat")){
-		Rcpp::stop("Invalid matrix type provided");
-	
-	} 
-
-	Rcpp::List list = Rcpp::as<Rcpp::List>(rmat);
-	Rcpp::Vector<RType> vec = Rcpp::as<Rcpp::Vector<RType> >(list["vec"]);
-	int nrow = list["nrow"];
-	int step = list["step"];
-	return MatWrapper< CType(RType) >(asSWMat(vec, nrow, step));
-}
 
 /* colsums and rowsums */
 

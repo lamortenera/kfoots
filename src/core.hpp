@@ -134,19 +134,6 @@ static inline void nbinomLoglik_core(TVec<int> counts, double mu, double r, Vec<
 }
 
 
-static inline double optimFun_core(Vec<int> counts, double mu, double r, Vec<double> posteriors, int nthreads){
-	
-	int e = counts.len;
-	long double llik = 0;
-	#pragma omp parallel for reduction(+:llik) num_threads(nthreads)
-	for (int i = 0; i < e; ++i){
-		if (posteriors[i] > 0){
-			llik += Rf_dnbinom_mu(counts[i], r, mu, 1)*(posteriors[i]);
-		}
-	}
-	return (double)llik;
-}
-
 
 //data for optimization function.
 //It is always assumed that mu is also the mean count.
@@ -169,7 +156,7 @@ static double fn1d(double logr, void* data){
 	int nthreads = info->nthreads;
 	
 	long double llik = 0;
-	#pragma omp parallel for schedule(static, 1) reduction(+:llik) num_threads(nthreads)
+	#pragma omp parallel for schedule(static) reduction(+:llik) num_threads(nthreads)
 	for (int i = 0; i < e; ++i){
 		if (post[i] > 0){
 			llik += lognbinom(counts[i], mu, r)*post[i];

@@ -84,10 +84,6 @@ nbinomLoglik <- function(counts, mu, r, nthreads = 1L) {
     .Call('kfoots_nbinomLoglik', PACKAGE = 'kfoots', counts, mu, r, nthreads)
 }
 
-optimFun <- function(counts, mu, r, posteriors, nthreads = 1L) {
-    .Call('kfoots_optimFun', PACKAGE = 'kfoots', counts, mu, r, posteriors, nthreads)
-}
-
 fitMultinom <- function(counts, posteriors, nthreads = 1L) {
     .Call('kfoots_fitMultinom', PACKAGE = 'kfoots', counts, posteriors, nthreads)
 }

@@ -16,6 +16,7 @@ Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector mix_co
 									Rcpp::Named("new_mix_coeff")=new_mix_coeff);
 }
 
+
 //' Group unique values of a vector
 //'
 //' @param v a vector of integers. If they are not integers they will be
@@ -50,23 +51,18 @@ Rcpp::List subsetM2U(Rcpp::List ucs, Rcpp::IntegerVector colidxs){
 
 
 // [[Rcpp::export]]
-Rcpp::NumericVector getMultinomConst(Rcpp::RObject counts, int nthreads=1){
-	MatWrapper<int> mat = wrapMat<INTSXP>(counts);
+Rcpp::NumericVector getMultinomConst(Rcpp::IntegerMatrix counts, int nthreads=1){
+	Mat<int> mat = asMat(counts);
 	Rcpp::NumericVector multinomConst(mat.ncol);
-	if (mat.type == "matrix"){
-		getMultinomConst_core(mat.matrix, asVec(multinomConst), nthreads);
-	} else if (mat.type == "gapmat"){
-		getMultinomConst_core(mat.gapmat, asVec(multinomConst), nthreads);
-	} else {
-		getMultinomConst_core(mat.swmat, asVec(multinomConst), nthreads);
-	}
+	getMultinomConst_core(mat, asVec(multinomConst), nthreads);
 	return multinomConst;
 }
 
-typedef Rcpp::NumericVector::iterator diter;
-typedef Rcpp::IntegerVector::iterator iiter;
 // [[Rcpp::export]]
 Rcpp::NumericVector sumAt(Rcpp::NumericVector values, Rcpp::IntegerVector map, int size, bool zeroIdx=false){
+	typedef Rcpp::NumericVector::iterator diter;
+	typedef Rcpp::IntegerVector::iterator iiter;
+
 	Rcpp::NumericVector res(size);
 	diter vend = values.end();
 	diter vstart = values.begin();
@@ -87,17 +83,10 @@ Rcpp::NumericVector sumAt(Rcpp::NumericVector values, Rcpp::IntegerVector map, i
 
 
 // [[Rcpp::export]]
-Rcpp::IntegerVector colSumsInt(Rcpp::RObject nums, int nthreads=1){
-	MatWrapper<int> mat = wrapMat<INTSXP>(nums);
+Rcpp::IntegerVector colSumsInt(Rcpp::IntegerMatrix nums, int nthreads=1){
+	Mat<int> mat = asMat(nums);
 	Rcpp::IntegerVector ret(mat.ncol);
-	Vec<int> vec = asVec(ret);
-	if (mat.type == "matrix"){
-		colSums(mat.matrix, vec, nthreads);
-	} else if (mat.type == "gapmat"){
-		colSums(mat.gapmat, vec, nthreads);
-	} else {
-		colSums(mat.swmat, vec, nthreads);
-	}
+	colSums(mat, asVec(ret), nthreads);
 	return ret;
 }
 
@@ -111,6 +100,7 @@ Rcpp::NumericVector colSumsDouble(Rcpp::NumericMatrix nums, int nthreads=1){
 	return ret;
 }
 
+
 // [[Rcpp::export]]
 Rcpp::NumericVector nbinomLoglik(Rcpp::IntegerVector counts, double mu, double r, int nthreads=1){
 	Rcpp::NumericVector res(counts.length());
@@ -118,24 +108,15 @@ Rcpp::NumericVector nbinomLoglik(Rcpp::IntegerVector counts, double mu, double r
 	return res;
 }
 
-// [[Rcpp::export]]
-double optimFun(Rcpp::IntegerVector counts, double mu, double r, Rcpp::NumericVector posteriors, int nthreads=1){
-	return optimFun_core(asVec(counts), mu, r, asVec(posteriors), std::max(nthreads, 1));
-}
 
 // [[Rcpp::export]]
-Rcpp::NumericVector fitMultinom(Rcpp::RObject counts, Rcpp::NumericVector posteriors, int nthreads=1){
-	MatWrapper<int> mat = wrapMat<INTSXP>(counts);
+Rcpp::NumericVector fitMultinom(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors, int nthreads=1){
+	Mat<int> mat = asMat(counts);
 	Rcpp::NumericVector fit(mat.nrow);
-	if (mat.type=="matrix"){
-		fitMultinom_core(mat.matrix, asVec(posteriors), asVec(fit), std::max(nthreads, 1));
-	} else if (mat.type=="gapmat"){
-		fitMultinom_core(mat.gapmat, asVec(posteriors), asVec(fit), std::max(nthreads, 1));
-	} else {
-		fitMultinom_core(mat.swmat, asVec(posteriors), asVec(fit), std::max(nthreads, 1));
-	}
+	fitMultinom_core(mat, asVec(posteriors), asVec(fit), std::max(nthreads, 1));
 	return fit;
 }
+
 
 static inline Rcpp::List writeModels(Vec<double> mus, Vec<double> rs, Mat<double> ps){
 	int nmod = mus.len;
@@ -149,10 +130,11 @@ static inline Rcpp::List writeModels(Vec<double> mus, Vec<double> rs, Mat<double
 	return ret;
 }
 
+
 // [[Rcpp::export]]
-Rcpp::NumericVector lLik(Rcpp::RObject counts, Rcpp::List model, Rcpp::List ucs, Rcpp::NumericVector mConst, int nthreads=1){
+Rcpp::NumericVector lLik(Rcpp::IntegerMatrix counts, Rcpp::List model, Rcpp::List ucs, Rcpp::NumericVector mConst, int nthreads=1){
 	
-	if (Rf_isNull(ucs)){
+	if (ucs.length()==0){
 		ucs = mapToUnique(colSumsInt(counts, nthreads));
 	}
 	if (mConst.length()==0){
@@ -161,8 +143,9 @@ Rcpp::NumericVector lLik(Rcpp::RObject counts, Rcpp::List model, Rcpp::List ucs,
 	
 	Rcpp::IntegerVector map = ucs["map"];
 	Rcpp::IntegerVector uniqueCS = ucs["values"];
+	NMPreproc preproc(asVec(uniqueCS), asVec(map), asVec(mConst));
 	
-	MatWrapper<int> countsMat = wrapMat<INTSXP>(counts);
+	Mat<int> countsMat = asMat(counts);
 	Rcpp::NumericVector lliks(countsMat.ncol);
 	Vec<double> lliksVec = asVec(lliks);
 	double mu, r; double* ps; int footlen;
@@ -170,15 +153,8 @@ Rcpp::NumericVector lLik(Rcpp::RObject counts, Rcpp::List model, Rcpp::List ucs,
 	
 	//re-format preprocessing data if present, otherwise, create it.
 	//If created here they will not be persistent
-	NMPreproc preproc(asVec(uniqueCS), asVec(map), asVec(mConst));
 	
-	if (countsMat.type == "matrix"){
-		getLlik(countsMat.matrix, mu, r, Vec<double>(ps, footlen), lliksVec, preproc, nthreads);
-	} else if (countsMat.type == "gapmat"){
-		getLlik(countsMat.gapmat, mu, r, Vec<double>(ps, footlen), lliksVec, preproc, nthreads);
-	} else {
-		getLlik(countsMat.swmat, mu, r, Vec<double>(ps, footlen), lliksVec, preproc, nthreads);
-	}
+	getLlik(countsMat, mu, r, Vec<double>(ps, footlen), lliksVec, preproc, nthreads);
 	
 	return lliks;
 }
@@ -235,7 +211,6 @@ Rcpp::List fitNB_inner(Rcpp::IntegerVector counts, Rcpp::NumericVector posterior
 
 // [[Rcpp::export]]
 Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
-	
 	int nmodels = models.length();
 	int footlen = counts.nrow();
 	
