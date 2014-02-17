@@ -169,7 +169,7 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 		}
 		
 		new_models <- fitModels(counts, posteriors, models, ucs=ucs, nthreads=nthreads)
-		
+				
 		if (addnoise){
 			new_models[[1]]$ps <- rep(1/footlen, footlen)
 		}
@@ -234,6 +234,7 @@ modelsFromSeeds <- function(counts, seeds, bgr_prior=0.5, ucs=NULL, nthreads=1){
 	for (i in seq_along(seeds)){ models[[i]] <- list(mu=-1, r=-1, ps=numeric(nrow(counts))) }
 	
 	#get fitted models
+	
 	fitModels(counts, posteriors, models, ucs=ucs, nthreads=nthreads)
 }
 
@@ -469,3 +470,36 @@ debugLikelihoodDecrease <- function(){
 				stop()
 			}}
 }
+
+#if multinom_const is NA, the function returns the log-likelihood
+#minus a constant term that does not depend on the parameters.
+#equivalent to
+#dmultinom(counts[,i], prob=ps, log=T), if multinom_const is not NA, otherwise
+#dmultinom(counts[,i], prob=ps, log=T) - lfactorial(sum(counts[,i]) + sum(lfactorial(counts[,i]))
+multinom_logLik <- function(counts, ps, multinom_const=getMultinomConst(counts)){
+	nloci <- ncol(counts)
+	footlen <- nrow(counts)
+	res <- .colSums(counts*log(ps), footlen, nloci, na.rm=T)
+
+	if (!is.na(multinom_const)[1]){
+		res + multinom_const
+	} else {
+		res
+	}
+}
+
+#if multinom_const is NA, the function returns the log-likelihood
+#minus a constant term that does not depend on the parameters.
+getLlik <- function(counts, model, ucs=NA, multinom_const=getMultinomConst(counts)){
+	res <- multinom_logLik(counts, model$ps, multinom_const=multinom_const)
+	if (!(is.na(ucs)[1])){
+		res + nbinom_logLik(ucs$values, model$mu, model$r)[ucs$map+1]
+	} else {
+		res + nbinom_logLik(.colSums(counts, nrow(counts), ncol(counts)), model$mu, model$r)
+	}
+}
+
+nbinom_logLik <- function(cs, mu, r){
+	dnbinom(cs, mu=mu, size=r, log=T)
+}
+

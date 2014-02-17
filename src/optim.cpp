@@ -361,10 +361,14 @@ static double Brent_fmin(double ax, double xx, double bx, double fai, double fxi
     return x;
 }
 
-
+//x1 here comes from initR
 static double brent_wrapper(double x1, double x2, double (*f)(double, void *), void *info, double tol){
 	//find a bracketing triple using x1 and x2 as starting points
 	double x3, f1, f2, f3, tmp;
+	
+	/*
+					double initScore = (*f)(x1, info);
+	*/
 	
 	mnbrak(&x1, &x2, &x3, &f1, &f2, &f3, f, info);
 	
@@ -374,5 +378,31 @@ static double brent_wrapper(double x1, double x2, double (*f)(double, void *), v
 		SHFT(tmp, f1, f3, tmp)
 	}
 	
-	return Brent_fmin(x1, x2, x3, f1, f2, f3, f, info, tol);
+	/*
+				double F1 = (*f)(x1, info);
+				double F2 = (*f)(x2, info);
+				double F3 = (*f)(x3, info);
+				
+				if (F1 != f1 || F2 != f2 || F3 != f3){
+					std::cout << "Something wrong in the bookkeeping" << std::endl;
+				}
+				if (F2 > F1 || F2 > F3){
+					std::cout << "That's not a braketing triple..." << std::endl;
+				}
+				
+				if (initScore < F2){
+					std::cout << "That's a bad braketing triple... " << std::endl;
+				}
+	*/
+	
+	double ret = Brent_fmin(x1, x2, x3, f1, f2, f3, f, info, tol);
+	
+	/*
+				double finalScore = (*f)(ret, info);
+				if (finalScore > F2){
+					std::cout << "Something wrong in brent" << std::endl;
+				}
+	*/
+	
+	return ret;
 }

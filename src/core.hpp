@@ -7,7 +7,9 @@
 #include "optim.cpp"
 
 //this will slow down a bit, but it's safe... hopefully they will fix it in R 3.1...
-#define lognbinom(c, mu, r) std::isfinite(mu*r)?Rf_dnbinom_mu(c, r, mu, 1):Rf_dpois(c, mu, 1)
+//the caller has the responsibility that mu and r are >= 0
+//this thing can be broken...
+#define lognbinom(c, mu, r) (std::isfinite(mu*r)?Rf_dnbinom_mu(c, r, mu, 1):Rf_dpois(c, mu, 1))
 
 struct CachedLFact{
 	std::unordered_map<int, double> cache;
@@ -177,7 +179,9 @@ static double fn1d(double logr, void* data){
 	return -llik;
 }
 
-
+//you need the guarantee that the r that you get will be better or equal to initR
+//if initR is acceptable (not negative and not infinity) it must be one of the two
+//points used for brent
 static inline void fitNB_core(Vec<int> counts, Vec<double> posteriors, double* mu, double* r, double initR, int nthreads=1){
 	//tolerance
 	double tol=1e-8;
@@ -196,17 +200,25 @@ static inline void fitNB_core(Vec<int> counts, Vec<double> posteriors, double* m
 	*mu = sum_cp/sum_p;
 	
 	//the r that matches the sample variance
-	double guessR = initR = (*mu) * (*mu) / (sum_c2p/sum_p  -  *mu * (*mu + 1));
+	double guessR = (*mu) * (*mu) / (sum_c2p/sum_p  -  *mu * (*mu + 1));
 	//low sample variance -> poisson case
-	if (guessR < 0 || !std::isfinite(guessR)){ guessR = DBL_MAX; }
-	if (initR < 0 || !std::isfinite(initR)){ initR = guessR; }
+	if (guessR < 0 || !std::isfinite(guessR)){ 
+		guessR = DBL_MAX;
+	}
+	if (initR < 0){
+		initR = guessR;
+	} else if (!std::isfinite(initR)){
+		//this is just to avoid to work with infinities, 
+		//but it should give the same score as infinity
+		initR = DBL_MAX; 
+	}
 	
 	//optimization is done in the log space to avoid boundary constraints
 	guessR = log(guessR);
 	initR = log(initR);
-	//initial points too close together
+	//initial points too close to each other
 	if (fabs(guessR - initR) < tol*fabs(guessR + initR)/2){
-		initR = guessR*(1 - tol);
+		guessR = initR*(1 - tol);
 	}
 	
 	
@@ -218,7 +230,7 @@ static inline void fitNB_core(Vec<int> counts, Vec<double> posteriors, double* m
 	info.nthreads = nthreads;
 	
 	initR = brent_wrapper(initR, guessR, fn1d, &info, tol);
-	
+		
 	*r = exp(initR);
 }
 
@@ -642,9 +654,7 @@ static inline double forward_backward_core(Vec<double> initP, Mat<double> trans,
 	return (double) tot_llik;
 }
 
-
 static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
-	//std::cout << "fitNBs_core" << std::endl;
 	int ncol = posteriors.ncol;
 	int nmod = posteriors.nrow;
 	if (mus.len != nmod || rs.len != nmod || tmpNB.ncol*tmpNB.nrow != nmod*preproc.uniqueCS.len){
@@ -652,6 +662,7 @@ static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs,
 	}
 	Vec<int> map = preproc.map;
 	Vec<int> values = preproc.uniqueCS;
+	
 	//make sure that tmpNB here has the desired format 
 	//(transpose of the one used in llikMat)
 	tmpNB.ncol = nmod;
@@ -661,12 +672,10 @@ static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs,
 	//nested parallel regions... this happens when nmod < nthreads
 	int nthreads_outer = nmod > nthreads? nthreads : nmod;
 	int nthreads_inner = ceil(((double)nthreads)/nmod);
-	//std::cout << "Threads per model: " << threads_per_model << std::endl;
 	omp_set_num_threads(nthreads);
 	omp_set_nested(true);
 	//make sure we're not using more than nthreads threads
 	omp_set_dynamic(true);
-	//std::cout << "starting main loop" << std::endl;
 	//fitting the negative binomials
 	
 	#pragma omp parallel for schedule(dynamic) num_threads(nthreads_outer)
@@ -681,11 +690,11 @@ static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs,
 			tmpNBCol[map[col]] += posteriors(mod, col);
 		}
 		//call the optimization procedure. This will use up to threads_per_model threads
-		//std::cout << "calling fitNB_core" << std::endl;
 		fitNB_core(values, Vec<double>(tmpNBCol, tmpNB.nrow), &mus[mod], &rs[mod], rs[mod], nthreads_inner);
 	}
 }
 
+//ps does not need to be clean
 template<template <typename> class TMat>
 static void fitMultinoms_core(TMat<int> counts, Mat<double> posteriors, Mat<double> ps, int nthreads){
 	int nmod = posteriors.nrow;

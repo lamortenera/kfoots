@@ -4,16 +4,11 @@
 #include <sys/time.h>
 
 // [[Rcpp::export]]
-Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector mix_coeff, SEXP posteriors=R_NilValue, int nthreads=1){
-	if (Rf_isNull(posteriors)){
-		posteriors = Rcpp::NumericMatrix(lliks.nrow(), lliks.ncol());
-	}
-	
-	Rcpp::NumericMatrix tposteriors(posteriors);
+Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector mix_coeff, Rcpp::NumericMatrix posteriors, int nthreads=1){
 	//copy the vector (I hope...)
 	Rcpp::NumericVector new_mix_coeff(mix_coeff);
 	
-	double tot = llik2posteriors_core(asMat(lliks), asVec(new_mix_coeff), asMat(tposteriors), nthreads);
+	double tot = llik2posteriors_core(asMat(lliks), asVec(new_mix_coeff), asMat(posteriors), nthreads);
 	
 	return Rcpp::List::create(
 									Rcpp::Named("posteriors")=posteriors,
@@ -155,22 +150,17 @@ static inline Rcpp::List writeModels(Vec<double> mus, Vec<double> rs, Mat<double
 }
 
 // [[Rcpp::export]]
-Rcpp::NumericVector lLik(Rcpp::RObject counts, Rcpp::List model, 
-		SEXP ucs = R_NilValue,
-		SEXP mConst = R_NilValue,
-		int nthreads=1){
+Rcpp::NumericVector lLik(Rcpp::RObject counts, Rcpp::List model, Rcpp::List ucs, Rcpp::NumericVector mConst, int nthreads=1){
 	
 	if (Rf_isNull(ucs)){
-		ucs = Rcpp::wrap(mapToUnique(colSumsInt(counts, nthreads)));
+		ucs = mapToUnique(colSumsInt(counts, nthreads));
 	}
-	if (Rf_isNull(mConst)){
-		mConst = Rcpp::wrap(getMultinomConst(counts, nthreads));
+	if (mConst.length()==0){
+		mConst = getMultinomConst(counts, nthreads);
 	}
 	
-	Rcpp::List ucs_list(ucs); 
-	Rcpp::IntegerVector map = ucs_list["map"];
-	Rcpp::IntegerVector uniqueCS = ucs_list["values"];
-	Rcpp::NumericVector multinomConst(mConst);
+	Rcpp::IntegerVector map = ucs["map"];
+	Rcpp::IntegerVector uniqueCS = ucs["values"];
 	
 	MatWrapper<int> countsMat = wrapMat<INTSXP>(counts);
 	Rcpp::NumericVector lliks(countsMat.ncol);
@@ -180,7 +170,7 @@ Rcpp::NumericVector lLik(Rcpp::RObject counts, Rcpp::List model,
 	
 	//re-format preprocessing data if present, otherwise, create it.
 	//If created here they will not be persistent
-	NMPreproc preproc(asVec(uniqueCS), asVec(map), asVec(multinomConst));
+	NMPreproc preproc(asVec(uniqueCS), asVec(map), asVec(mConst));
 	
 	if (countsMat.type == "matrix"){
 		getLlik(countsMat.matrix, mu, r, Vec<double>(ps, footlen), lliksVec, preproc, nthreads);
@@ -195,48 +185,35 @@ Rcpp::NumericVector lLik(Rcpp::RObject counts, Rcpp::List model,
 
 
 // [[Rcpp::export]]
-Rcpp::NumericMatrix lLikMat(Rcpp::IntegerMatrix counts, Rcpp::List models, 
-		SEXP ucs = R_NilValue,
-		SEXP mConst = R_NilValue,
-		SEXP lliks = R_NilValue,
+void lLikMat(Rcpp::IntegerMatrix counts, Rcpp::List models, 
+		Rcpp::List ucs, Rcpp::NumericVector mConst, Rcpp::NumericMatrix lliks,
 		int nthreads=1){
 	
 	//parse or compute preprocessing data
-	if (Rf_isNull(ucs)){
-		ucs = (SEXP) mapToUnique(colSumsInt(counts, nthreads));
+	if (ucs.length()==0){
+		ucs = mapToUnique(colSumsInt(counts, nthreads));
 	}
-	if (Rf_isNull(mConst)){
-		mConst = (SEXP) getMultinomConst(counts, nthreads);
+	if (mConst.length()==0){
+		mConst = getMultinomConst(counts, nthreads);
 	}
 	
-	Rcpp::List ucs_list(ucs); 
-	Rcpp::IntegerVector uniqueCS = ucs_list["values"];
-	Rcpp::IntegerVector map = ucs_list["map"];
-	Rcpp::NumericVector multinomConst(mConst);
-	NMPreproc preproc(asVec(uniqueCS), asVec(map), asVec(multinomConst));
+	Rcpp::IntegerVector uniqueCS = ucs["values"];
+	Rcpp::IntegerVector map = ucs["map"];
+	NMPreproc preproc(asVec(uniqueCS), asVec(map), asVec(mConst));
 	
 	Mat<int> countsMat = asMat(counts);
-	//parsing the models
 	int nmodels = models.length();
 	int footlen = countsMat.nrow;
-	std::vector<double> musSTD(nmodels);
-	std::vector<double> rsSTD(nmodels);
-	std::vector<double> psSTD(nmodels*footlen);
-	Vec<double> mus = asVec(musSTD);
-	Vec<double> rs = asVec(rsSTD);
-	Mat<double> ps = asMat(psSTD, nmodels);
+	//parsing the models
+	std::vector<double> musSTD(nmodels); Vec<double> mus = asVec(musSTD);
+	std::vector<double> rsSTD(nmodels); Vec<double> rs = asVec(rsSTD);
+	std::vector<double> psSTD(nmodels*footlen); Mat<double> ps = asMat(psSTD, nmodels);
 	parseModels(models, mus, rs, ps);
+	
 	//allocating some temporary memory
 	std::vector<double> tmpNB(uniqueCS.length()*nmodels);
-	//allocating return variable
-	if (Rf_isNull(lliks)){
-		lliks = Rcpp::NumericMatrix(nmodels, countsMat.ncol);
-	}
-	Rcpp::NumericMatrix tlliks(lliks);
 	
-	lLikMat_core(countsMat, mus, rs, ps, asMat(tlliks), preproc, asMat(tmpNB, uniqueCS.length()), nthreads);
-	
-	return lliks;
+	lLikMat_core(countsMat, mus, rs, ps, asMat(lliks), preproc, asMat(tmpNB, uniqueCS.length()), nthreads);
 }
 
 // [[Rcpp::export]]
@@ -255,10 +232,9 @@ Rcpp::List fitNB_inner(Rcpp::IntegerVector counts, Rcpp::NumericVector posterior
 	return Rcpp::List::create(Rcpp::Named("mu")=mu, Rcpp::Named("r")=r);
 }
 
+
 // [[Rcpp::export]]
-Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, 
-	SEXP ucs = R_NilValue,
-	int nthreads=1){
+Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
 	
 	int nmodels = models.length();
 	int footlen = counts.nrow();
@@ -269,24 +245,23 @@ Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors,
 	}
 	
 	//parse or compute preprocessing data (multinomConst is not needed)
-	if (Rf_isNull(ucs)){
-		ucs = (SEXP) mapToUnique(colSumsInt(counts, nthreads));
+	if (ucs.length()==0){
+		ucs = mapToUnique(colSumsInt(counts, nthreads));
 	}
-	Rcpp::List ucs_list(ucs); 
-	Rcpp::IntegerVector uniqueCS = ucs_list["values"];
-	Rcpp::IntegerVector map = ucs_list["map"];
+	
+	Rcpp::IntegerVector uniqueCS = ucs["values"];
+	Rcpp::IntegerVector map = ucs["map"];
+
 	NMPreproc preproc(asVec(uniqueCS), asVec(map), Vec<double>(0,0));
 	
 	Mat<int> countsMat = asMat(counts);
 	Mat<double> postMat = asMat(posteriors);
 	//parsing the models
-	std::vector<double> musSTD(nmodels);
-	std::vector<double> rsSTD(nmodels);
-	std::vector<double> psSTD(nmodels*footlen);
-	Vec<double> mus = asVec(musSTD);
-	Vec<double> rs = asVec(rsSTD);
-	Mat<double> ps = asMat(psSTD, nmodels);
-	parseModels(models, Vec<double>(0,0), rs, Mat<double>(0,0,0));
+	std::vector<double> musSTD(nmodels); Vec<double> mus = asVec(musSTD);
+	std::vector<double> rsSTD(nmodels); Vec<double> rs = asVec(rsSTD);
+	std::vector<double> psSTD(nmodels*footlen); Mat<double> ps = asMat(psSTD, nmodels);
+	parseModels(models, mus, rs, ps);
+	
 	//allocating some temporary memory
 	std::vector<double> tmpNB(uniqueCS.length()*nmodels);
 	
@@ -301,7 +276,7 @@ void fitNBs(
 						Rcpp::NumericVector mus, 
 						Rcpp::NumericVector rs,
 						Rcpp::List ucs,
-						int nthreads){
+						int nthreads = 1){
 	
 	Rcpp::IntegerVector uniqueCS = ucs["values"];
 	Rcpp::IntegerVector map = ucs["map"];

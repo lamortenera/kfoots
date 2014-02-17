@@ -19,7 +19,7 @@
 #'	\item{tot_llik}{total log-likelihood of the data given the hmm model}
 #'	\item{new_trans}{update for the transition probabilities (it is already normalized)}
 #' @export
-forward_backward <- function(initP, trans, lliks, seqlens, posteriors = NULL, nthreads = 1L) {
+forward_backward <- function(initP, trans, lliks, seqlens, posteriors, nthreads = 1L) {
     .Call('kfoots_forward_backward', PACKAGE = 'kfoots', initP, trans, lliks, seqlens, posteriors, nthreads)
 }
 
@@ -44,7 +44,7 @@ orderColumns <- function(mat) {
     .Call('kfoots_orderColumns', PACKAGE = 'kfoots', mat)
 }
 
-llik2posteriors <- function(lliks, mix_coeff, posteriors = NULL, nthreads = 1L) {
+llik2posteriors <- function(lliks, mix_coeff, posteriors, nthreads = 1L) {
     .Call('kfoots_llik2posteriors', PACKAGE = 'kfoots', lliks, mix_coeff, posteriors, nthreads)
 }
 
@@ -92,12 +92,12 @@ fitMultinom <- function(counts, posteriors, nthreads = 1L) {
     .Call('kfoots_fitMultinom', PACKAGE = 'kfoots', counts, posteriors, nthreads)
 }
 
-lLik <- function(counts, model, ucs = NULL, mConst = NULL, nthreads = 1L) {
+lLik <- function(counts, model, ucs, mConst, nthreads = 1L) {
     .Call('kfoots_lLik', PACKAGE = 'kfoots', counts, model, ucs, mConst, nthreads)
 }
 
-lLikMat <- function(counts, models, ucs = NULL, mConst = NULL, lliks = NULL, nthreads = 1L) {
-    .Call('kfoots_lLikMat', PACKAGE = 'kfoots', counts, models, ucs, mConst, lliks, nthreads)
+lLikMat <- function(counts, models, ucs, mConst, lliks, nthreads = 1L) {
+    invisible(.Call('kfoots_lLikMat', PACKAGE = 'kfoots', counts, models, ucs, mConst, lliks, nthreads))
 }
 
 pwhichmax <- function(posteriors, nthreads = 1L) {
@@ -108,11 +108,11 @@ fitNB_inner <- function(counts, posteriors, initR = -1) {
     .Call('kfoots_fitNB_inner', PACKAGE = 'kfoots', counts, posteriors, initR)
 }
 
-fitModels <- function(counts, posteriors, models, ucs = NULL, nthreads = 1L) {
+fitModels <- function(counts, posteriors, models, ucs, nthreads = 1L) {
     .Call('kfoots_fitModels', PACKAGE = 'kfoots', counts, posteriors, models, ucs, nthreads)
 }
 
-fitNBs <- function(post, mus, rs, ucs, nthreads) {
+fitNBs <- function(post, mus, rs, ucs, nthreads = 1L) {
     invisible(.Call('kfoots_fitNBs', PACKAGE = 'kfoots', post, mus, rs, ucs, nthreads))
 }
 

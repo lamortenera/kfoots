@@ -94,6 +94,7 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 		
 		new_models <- fitModels(counts, posteriors, models, ucs=ucs, nthreads=nthreads)
 		
+		
 		if(iter!=1 && new_loglik < loglik && !compare(new_loglik, loglik, tol))
 			warning(paste0("decrease in log-likelihood at iteration ",iter))
 		
@@ -102,7 +103,6 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 				converged <- TRUE
 			}
 		}
-
 		trans = new_trans
 		models = new_models
 		loglik = new_loglik
@@ -114,7 +114,7 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 	if (!converged)
 		warning(paste0("The algorithm did not converge after ", maxiter, " iterations (try to increase parameter maxiter)"))
 
-	lliks <- lLikMat(counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)
+	lLikMat(lliks=lliks, counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)
 	viterbi_path <- viterbi(initP, trans, lliks, seqlens)
 	
 	for (i in seq_along(models)){
