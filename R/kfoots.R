@@ -36,7 +36,7 @@ kfoots_wrapper <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
 	bestLlik <- -Inf
 	if (cores <= 1 || nstart == 1){#no parallelization
 		for (i in 1:nstart){
-			foots <- kfoots_core(counts, k, verbose=verbose, ...)
+			foots <- kfoots(counts, k, verbose=verbose, ...)
 			
 			if (foots$loglik > bestLlik)
 				bestFoots <- foots
@@ -58,7 +58,7 @@ kfoots_wrapper <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
 			iargs <- rep(k, nstart)
 		
 		footslist <- mclapply(mc.cores=min(cores, nstart), iargs, function(currk){
-			kfoots_core(counts, currk, verbose=verbose, ...)
+			kfoots(counts, currk, verbose=verbose, ...)
 		})
 		
 		for (foots in footslist){
