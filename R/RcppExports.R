@@ -68,12 +68,20 @@ getMultinomConst <- function(counts, nthreads = 1L) {
     .Call('kfoots_getMultinomConst', PACKAGE = 'kfoots', counts, nthreads)
 }
 
+getMultinomConstSW <- function(counts, nthreads = 1L) {
+    .Call('kfoots_getMultinomConstSW', PACKAGE = 'kfoots', counts, nthreads)
+}
+
 sumAt <- function(values, map, size, zeroIdx = FALSE) {
     .Call('kfoots_sumAt', PACKAGE = 'kfoots', values, map, size, zeroIdx)
 }
 
 colSumsInt <- function(nums, nthreads = 1L) {
     .Call('kfoots_colSumsInt', PACKAGE = 'kfoots', nums, nthreads)
+}
+
+colSumsIntSW <- function(nums, nthreads = 1L) {
+    .Call('kfoots_colSumsIntSW', PACKAGE = 'kfoots', nums, nthreads)
 }
 
 colSumsDouble <- function(nums, nthreads = 1L) {
@@ -88,6 +96,10 @@ lLikMat <- function(counts, models, ucs, mConst, lliks, nthreads = 1L) {
     invisible(.Call('kfoots_lLikMat', PACKAGE = 'kfoots', counts, models, ucs, mConst, lliks, nthreads))
 }
 
+lLikGapMat <- function(counts, models, ucs, mConst, lliks, nthreads = 1L) {
+    invisible(.Call('kfoots_lLikGapMat', PACKAGE = 'kfoots', counts, models, ucs, mConst, lliks, nthreads))
+}
+
 pwhichmax <- function(posteriors, nthreads = 1L) {
     .Call('kfoots_pwhichmax', PACKAGE = 'kfoots', posteriors, nthreads)
 }
@@ -98,5 +110,9 @@ fitNB_inner <- function(counts, posteriors, initR = -1) {
 
 fitModels <- function(counts, posteriors, models, ucs, nthreads = 1L) {
     .Call('kfoots_fitModels', PACKAGE = 'kfoots', counts, posteriors, models, ucs, nthreads)
+}
+
+fitModelsGapMat <- function(counts, posteriors, models, ucs, nthreads = 1L) {
+    .Call('kfoots_fitModelsGapMat', PACKAGE = 'kfoots', counts, posteriors, models, ucs, nthreads)
 }
 

@@ -50,13 +50,19 @@ Rcpp::List subsetM2U(Rcpp::List ucs, Rcpp::IntegerVector colidxs){
 }
 
 
-// [[Rcpp::export]]
-Rcpp::NumericVector getMultinomConst(Rcpp::IntegerMatrix counts, int nthreads=1){
-	Mat<int> mat = asMat(counts);
-	Rcpp::NumericVector multinomConst(mat.ncol);
-	getMultinomConst_core(mat, asVec(multinomConst), nthreads);
+template<template <typename> class TMat>
+inline Rcpp::NumericVector getMultinomConst_helper(TMat<int> counts, int nthreads=1){
+	Rcpp::NumericVector multinomConst(counts.ncol);
+	getMultinomConst_core(counts, asVec(multinomConst), nthreads);
 	return multinomConst;
 }
+
+// [[Rcpp::export]]
+Rcpp::NumericVector getMultinomConst(Rcpp::IntegerMatrix counts, int nthreads=1){ return getMultinomConst_helper(asMat(counts), nthreads);}
+
+// [[Rcpp::export]]
+Rcpp::NumericVector getMultinomConstSW(SEXP counts, int nthreads=1){	return getMultinomConst_helper(asSWMat<int>(counts), nthreads);}
+
 
 // [[Rcpp::export]]
 Rcpp::NumericVector sumAt(Rcpp::NumericVector values, Rcpp::IntegerVector map, int size, bool zeroIdx=false){
@@ -81,14 +87,19 @@ Rcpp::NumericVector sumAt(Rcpp::NumericVector values, Rcpp::IntegerVector map, i
 	return res;
 }
 
-
-// [[Rcpp::export]]
-Rcpp::IntegerVector colSumsInt(Rcpp::IntegerMatrix nums, int nthreads=1){
-	Mat<int> mat = asMat(nums);
+template<template <typename> class TMat>
+inline Rcpp::IntegerVector colSumsInt_helper(TMat<int> mat, int nthreads=1){
 	Rcpp::IntegerVector ret(mat.ncol);
 	colSums(mat, asVec(ret), nthreads);
 	return ret;
 }
+
+// [[Rcpp::export]]
+Rcpp::IntegerVector colSumsInt(Rcpp::IntegerMatrix nums, int nthreads=1){return colSumsInt_helper(asMat(nums), nthreads);}
+
+// [[Rcpp::export]]
+Rcpp::IntegerVector colSumsIntSW(SEXP nums, int nthreads=1){return colSumsInt_helper(asSWMat<int>(nums), nthreads);}
+
 
 // [[Rcpp::export]]
 Rcpp::NumericVector colSumsDouble(Rcpp::NumericMatrix nums, int nthreads=1){
@@ -170,26 +181,26 @@ Rcpp::NumericVector lLik(Rcpp::IntegerMatrix counts, Rcpp::List model, Rcpp::Lis
 }
 */
 
-// [[Rcpp::export]]
-void lLikMat(Rcpp::IntegerMatrix counts, Rcpp::List models, 
+
+template<template <typename> class TMat>
+inline void lLikMat_helper(TMat<int> counts, Rcpp::List models, 
 		Rcpp::List ucs, Rcpp::NumericVector mConst, Rcpp::NumericMatrix lliks,
 		int nthreads=1){
 	
 	//parse or compute preprocessing data
 	if (ucs.length()==0){
-		ucs = mapToUnique(colSumsInt(counts, nthreads));
+		ucs = mapToUnique(colSumsInt_helper(counts, nthreads));
 	}
 	if (mConst.length()==0){
-		mConst = getMultinomConst(counts, nthreads);
+		mConst = getMultinomConst_helper(counts, nthreads);
 	}
 	
 	Rcpp::IntegerVector uniqueCS = ucs["values"];
 	Rcpp::IntegerVector map = ucs["map"];
 	NMPreproc preproc(asVec(uniqueCS), asVec(map), asVec(mConst));
 	
-	Mat<int> countsMat = asMat(counts);
 	int nmodels = models.length();
-	int footlen = countsMat.nrow;
+	int footlen = counts.nrow;
 	//parsing the models
 	std::vector<double> musSTD(nmodels); Vec<double> mus = asVec(musSTD);
 	std::vector<double> rsSTD(nmodels); Vec<double> rs = asVec(rsSTD);
@@ -199,8 +210,23 @@ void lLikMat(Rcpp::IntegerMatrix counts, Rcpp::List models,
 	//allocating some temporary memory
 	std::vector<double> tmpNB(uniqueCS.length()*nmodels);
 	
-	lLikMat_core(countsMat, mus, rs, ps, asMat(lliks), preproc, asMat(tmpNB, uniqueCS.length()), nthreads);
+	lLikMat_core(counts, mus, rs, ps, asMat(lliks), preproc, asMat(tmpNB, uniqueCS.length()), nthreads);
 }
+
+// [[Rcpp::export]]
+void lLikMat(	Rcpp::IntegerMatrix counts, Rcpp::List models, 
+					Rcpp::List ucs, Rcpp::NumericVector mConst, Rcpp::NumericMatrix lliks,
+					int nthreads=1){
+	lLikMat_helper(asMat(counts), models, ucs, mConst, lliks, nthreads);
+}
+
+// [[Rcpp::export]]
+void lLikGapMat(	SEXP counts, Rcpp::List models, Rcpp::List ucs,
+						Rcpp::NumericVector mConst, Rcpp::NumericMatrix lliks,
+						int nthreads=1){
+	lLikMat_helper(asGapMat<int>(counts), models, ucs, mConst, lliks, nthreads);
+}
+
 
 // [[Rcpp::export]]
 Rcpp::IntegerVector pwhichmax(Rcpp::NumericMatrix posteriors, int nthreads=1){
@@ -219,19 +245,19 @@ Rcpp::List fitNB_inner(Rcpp::IntegerVector counts, Rcpp::NumericVector posterior
 }
 
 
-// [[Rcpp::export]]
-Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
+template<template <typename> class TMat>
+inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
 	int nmodels = models.length();
-	int footlen = counts.nrow();
+	int footlen = counts.nrow;
 	
-	if (	counts.ncol() != posteriors.ncol() ||
+	if (	counts.ncol != posteriors.ncol() ||
 			posteriors.nrow() != nmodels ){
 		throw std::invalid_argument("Invalid arguments passed to fitModels");
 	}
 	
 	//parse or compute preprocessing data (multinomConst is not needed)
 	if (ucs.length()==0){
-		ucs = mapToUnique(colSumsInt(counts, nthreads));
+		ucs = mapToUnique(colSumsInt_helper(counts, nthreads));
 	}
 	
 	Rcpp::IntegerVector uniqueCS = ucs["values"];
@@ -239,7 +265,6 @@ Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors,
 
 	NMPreproc preproc(asVec(uniqueCS), asVec(map), Vec<double>(0,0));
 	
-	Mat<int> countsMat = asMat(counts);
 	Mat<double> postMat = asMat(posteriors);
 	//parsing the models
 	std::vector<double> musSTD(nmodels); Vec<double> mus = asVec(musSTD);
@@ -251,9 +276,20 @@ Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors,
 	std::vector<double> tmpNB(uniqueCS.length()*nmodels);
 	
 	fitNBs_core(postMat, mus, rs, preproc, asMat(tmpNB, nmodels), nthreads);
-	fitMultinoms_core(countsMat, postMat, ps, nthreads);
+	fitMultinoms_core(counts, postMat, ps, nthreads);
 	return writeModels(mus, rs, ps);
 }
+
+// [[Rcpp::export]]
+Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
+	return fitModels_helper(asMat(counts), posteriors, models, ucs, nthreads);
+}
+
+// [[Rcpp::export]]
+Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
+	return fitModels_helper(asGapMat<int>(counts), posteriors, models, ucs, nthreads);
+}
+
 
 /*
 // [[Rcpp::export]]

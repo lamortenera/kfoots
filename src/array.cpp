@@ -8,38 +8,48 @@
  * All these classes do not own the memory (no alloc/dealloc), they
  * just wrap pointers to memory allocated/deallocated somewhere else */
 
-template<typename TType>
+template<typename T>
 struct Vec {
-	TType* ptr;
+	T* ptr;
 	int len;
 	
 	Vec(){}
 	
-	Vec(TType* _ptr, int _len):
+	Vec(T* _ptr, int _len):
 		ptr(_ptr), len(_len){}
 	
-	inline TType operator[] (int i) const {return ptr[i];}
-	inline TType& operator[] (int i){return ptr[i];}
+	inline T operator[] (int i) const {return ptr[i];}
+	inline T& operator[] (int i){return ptr[i];}
 	
 	Vec subset(int start, int end){
 		return Vec(ptr + start, end - start);
 	}
+	
+	Vec(SEXP x){
+		const int RType = Rcpp::traits::r_sexptype_traits<T>::rtype;
+		//no memory allocation
+		if (TYPEOF(x) != RType) Rcpp::stop("incompatible types");
+
+		Rcpp::Vector< RType > rcpp_vec(x);
+		ptr = rcpp_vec.begin();
+		len = rcpp_vec.length();
+	}
 };
 
 //vector where elements correspond to non necessarily adjacent areas of memory 
-template<typename TType>
+template<typename T>
 struct GapVec {
-	TType* ptr;
+	T* ptr;
 	int* set;
 	int len;
 	
 	GapVec(){}
 	
-	GapVec(TType* _ptr, int* _set, int _len):
+	GapVec(T* _ptr, int* _set, int _len):
 		ptr(_ptr), set(_set), len(_len){}
 	
-	inline TType operator[] (int i) const {return ptr[set[i]];}
-	inline TType& operator[] (int i){return ptr[set[i]];}
+	inline T operator[] (int i) const {return ptr[set[i]];}
+	inline T& operator[] (int i){return ptr[set[i]];}
 	
 	GapVec subset(int start, int end){
 		return GapVec(ptr, set + start, end - start);
@@ -47,50 +57,61 @@ struct GapVec {
 };
 
 //normal matrix
-template<typename TType>
+template<typename T>
 struct Mat {
-	TType* ptr;
+	T* ptr;
 	int nrow;
 	int ncol;
 	
 	Mat(){}
 	
-	Mat(TType* _ptr, int _nrow, int _ncol):
+	Mat(T* _ptr, int _nrow, int _ncol):
 		ptr(_ptr), nrow(_nrow), ncol(_ncol){}
 	
-	inline TType operator[] (int i) const {return ptr[i];}
-	inline TType& operator[] (int i){return ptr[i];}
+	inline T operator[] (int i) const {return ptr[i];}
+	inline T& operator[] (int i){return ptr[i];}
 	
-	inline TType operator() (int row, int col) const {return ptr[row + col*nrow];}
-	inline TType& operator() (int row, int col) {return ptr[row + col*nrow];}
+	inline T operator() (int row, int col) const {return ptr[row + col*nrow];}
+	inline T& operator() (int row, int col) {return ptr[row + col*nrow];}
 	
 	Mat subsetCol(int colStart, int colEnd){
 		return Mat(ptr + nrow*colStart, nrow, colEnd-colStart);
 	}
 	
 	
-	inline TType get(int row, int col){
+	inline T get(int row, int col){
 		return ptr[row + col*nrow];
 	}
 	
-	inline TType* colptr(int col){
+	inline T* colptr(int col){
 		return ptr + col*nrow;
 	}
 	
-	inline Vec<TType> getCol(int col){
-		return Vec<TType>(ptr + col*nrow, nrow);
+	inline Vec<T> getCol(int col){
+		return Vec<T>(ptr + col*nrow, nrow);
+	}
+	
+	Mat(SEXP x){
+		const int RType = Rcpp::traits::r_sexptype_traits<T>::rtype;
+		
+		//no memory allocation
+		if (TYPEOF(x) != RType) Rcpp::stop("incompatible types");
+		Rcpp::Matrix< RType > rcpp_mat(x);
+		ptr = rcpp_mat.begin();
+		nrow = rcpp_mat.nrow();
+		ncol = rcpp_mat.ncol();
 	}
 };
 
 //matrix corresponding to a sliding window of length nrow on a sequence *ptr, the window slides step positions every time
-template<typename TType>
+template<typename T>
 struct SWMat {
-	TType* ptr;
+	T* ptr;
 	int nrow;
 	int ncol;
 	int step;
 	
-	inline TType* colptr(int col){
+	inline T* colptr(int col){
 		return ptr + col*step;
 	}
 	
@@ -102,26 +123,36 @@ struct SWMat {
 	
 	SWMat(){}
 	
-	SWMat(TType* _ptr, int _nrow, int _ncol, int _step):
+	SWMat(T* _ptr, int _nrow, int _ncol, int _step):
 		ptr(_ptr), nrow(_nrow), ncol(_ncol), step(_step){}
 	
-	inline TType operator[] (int i) const {return ptr[i];}
-	inline TType& operator[] (int i){return ptr[i];}
+	SWMat(Vec<T> vec, int _nrow, int _step){
+		if ((vec.len - nrow) % step != 0) throw std::invalid_argument("the window can be slid a fractional number of times...");
+		
+		ptr = vec.ptr;
+		nrow = _nrow;
+		step = _step;
+		ncol = (vec.len - nrow)/step + 1;
+		
+	}
 	
-	inline TType operator() (int row, int col) const {return *(row + colptr(col));}
-	inline TType& operator() (int row, int col) {return *(row + colptr(col));}
+	inline T operator[] (int i) const {return ptr[i];}
+	inline T& operator[] (int i){return ptr[i];}
+	
+	inline T operator() (int row, int col) const {return *(row + colptr(col));}
+	inline T& operator() (int row, int col) {return *(row + colptr(col));}
 	
 	SWMat subsetCol(int colStart, int colEnd){
 		return SWMat(colptr(colStart), nrow, colEnd-colStart, step);
 	}
 	
 	
-	inline TType get(int row, int col){
+	inline T get(int row, int col){
 		return ptr[row + colptr(col)];
 	}
 	
-	inline Vec<TType> getCol(int col){
-		return Vec<TType>(colptr(col), nrow);
+	inline Vec<T> getCol(int col){
+		return Vec<T>(colptr(col), nrow);
 	}
 };
 
@@ -129,37 +160,37 @@ struct SWMat {
 //matrix where columns correspond to non necessarily adjacent areas of memory 
 //the only difference between this and a pointer of pointers is that here 
 //an int per column is stored (the offset from the start of the matrix), instead of a 64 bits pointer.
-template<typename TType>
+template<typename T>
 struct GapMat {
-	TType* ptr;
+	T* ptr;
 	int* colset;
 	int nrow;
 	int ncol;
 	
 	
-	inline TType* colptr(int col){
+	inline T* colptr(int col){
 		return ptr + colset[col];
 	}
 	
 	GapMat(){}
 	
-	GapMat(TType* _ptr, int* _colset, int _nrow, int _ncol):
+	GapMat(T* _ptr, int* _colset, int _nrow, int _ncol):
 		ptr(_ptr), colset(_colset), nrow(_nrow), ncol(_ncol){}
 	
-	inline TType operator() (int row, int col) const {return *(row + colptr(col));}
-	inline TType& operator() (int row, int col) {return *(row + colptr(col));}
+	inline T operator() (int row, int col) const {return *(row + colptr(col));}
+	inline T& operator() (int row, int col) {return *(row + colptr(col));}
 	
 	GapMat subsetCol(int colStart, int colEnd){
 		return GapMat(ptr, colset + colStart, nrow, colEnd-colStart);
 	}
 	
 	
-	inline TType get(int row, int col){
+	inline T get(int row, int col){
 		return ptr[row + colptr(col)];
 	}
 	
-	inline Vec<TType> getCol(int col){
-		return Vec<TType>(colptr(col), nrow);
+	inline Vec<T> getCol(int col){
+		return Vec<T>(colptr(col), nrow);
 	}
 };
 
@@ -168,13 +199,13 @@ struct GapMat {
 
 //so far I am using it only to translate at compile-time INTSXP to int and REALSXP to double
 #define CType(RType) typename Rcpp::traits::storage_type<RType>::type
-
+//the opposite is:  Rcpp::traits::r_sexptype_traits<T>::rtype
 
 //this is not going to work with vector<bool>,
 //because it doesn't contain a pointer to bools
-template<typename TType>
-inline Vec<TType> asVec(std::vector<TType>& v){
-	return Vec<TType>(v.data(), v.size());
+template<typename T>
+inline Vec<T> asVec(std::vector<T>& v){
+	return Vec<T>(v.data(), v.size());
 }
 
 template<int RType>
@@ -182,10 +213,10 @@ inline Vec< CType(RType) > asVec(Rcpp::Vector<RType>& v){
 	return Vec< CType(RType) >(v.begin(), v.length());
 }
 
-template<typename TType>
-inline Mat<TType> asMat(std::vector<TType>& v, int ncol){
+template<typename T>
+inline Mat<T> asMat(std::vector<T>& v, int ncol){
 	if (v.size() % ncol != 0) throw std::invalid_argument("number of columns must be a divisor of vector length");
-	return Mat<TType>(v.data(), v.size()/ncol, ncol);
+	return Mat<T>(v.data(), v.size()/ncol, ncol);
 }
 
 template<int RType>
@@ -193,18 +224,31 @@ inline Mat< CType(RType) > asMat(Rcpp::Matrix<RType>& m){
 	return Mat< CType(RType) >(m.begin(), m.nrow(), m.ncol());
 }
 
-template<typename TType>
-inline SWMat<TType> asSWMat(std::vector<TType>& v, int nrow, int step){
-	if ((v.size() - nrow) % step != 0) throw std::invalid_argument("the window can be slid a fractional number of times...");
-	return SWMat<TType>(v.data(), nrow, (v.size() - nrow)/step + 1, step);
+
+//these converters start from a SEXP, you must make sure that the SEXP survives
+template<typename T>
+inline GapMat<T> asGapMat(SEXP x){
+	if (!Rf_inherits(x, "gapmat")) Rcpp::stop("the given object does not inherit from gapmat");
+	Rcpp::List list = Rcpp::as<Rcpp::List>(x);
+	//you must make sure that no memory is allocated here. The pointers won't be valid otherwise
+	Vec<T> vec((SEXP)list["vec"]);
+	Vec<int> colset((SEXP)list["colset"]);
+	int nrow = list["nrow"];
+	
+	return GapMat<T>(vec.ptr, colset.ptr, nrow, colset.len);
 }
 
-template<int RType>
-inline SWMat< CType(RType) > asSWMat(Rcpp::Vector<RType>& v, int nrow, int step){
-	if ((v.length() - nrow) % step != 0) Rcpp::stop("the window can be slid a fractional number of times...");
-	return SWMat< CType(RType) >(v.begin(), nrow, (v.length() - nrow)/step + 1, step);
+template<typename T>
+inline SWMat<T> asSWMat(SEXP x){
+	if (!Rf_inherits(x, "swmat")) Rcpp::stop("the given object does not inherit from swmat");
+	Rcpp::List list = Rcpp::as<Rcpp::List>(x);
+	//you must make sure that no memory is allocated here. The pointers won't be valid otherwise
+	Vec<T> vec((SEXP)list["vec"]);
+	int step = list["step"];
+	int nrow = list["nrow"];
+	
+	return SWMat<T>(vec, nrow, step);
 }
-
 
 /* colsums and rowsums */
 

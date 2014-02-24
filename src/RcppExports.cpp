@@ -123,6 +123,22 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
+// getMultinomConstSW
+Rcpp::NumericVector getMultinomConstSW(SEXP counts, int nthreads = 1);
+RcppExport SEXP kfoots_getMultinomConstSW(SEXP countsSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< SEXP >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::NumericVector __result = getMultinomConstSW(counts, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
 // sumAt
 Rcpp::NumericVector sumAt(Rcpp::NumericVector values, Rcpp::IntegerVector map, int size, bool zeroIdx = false);
 RcppExport SEXP kfoots_sumAt(SEXP valuesSEXP, SEXP mapSEXP, SEXP sizeSEXP, SEXP zeroIdxSEXP) {
@@ -151,6 +167,22 @@ BEGIN_RCPP
         Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type nums(numsSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
         Rcpp::IntegerVector __result = colSumsInt(nums, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// colSumsIntSW
+Rcpp::IntegerVector colSumsIntSW(SEXP nums, int nthreads = 1);
+RcppExport SEXP kfoots_colSumsIntSW(SEXP numsSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< SEXP >::type nums(numsSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::IntegerVector __result = colSumsIntSW(nums, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);
@@ -206,6 +238,23 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// lLikGapMat
+void lLikGapMat(SEXP counts, Rcpp::List models, Rcpp::List ucs, Rcpp::NumericVector mConst, Rcpp::NumericMatrix lliks, int nthreads = 1);
+RcppExport SEXP kfoots_lLikGapMat(SEXP countsSEXP, SEXP modelsSEXP, SEXP ucsSEXP, SEXP mConstSEXP, SEXP lliksSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< SEXP >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::List >::type models(modelsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::List >::type ucs(ucsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type mConst(mConstSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type lliks(lliksSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        lLikGapMat(counts, models, ucs, mConst, lliks, nthreads);
+    }
+    return R_NilValue;
+END_RCPP
+}
 // pwhichmax
 Rcpp::IntegerVector pwhichmax(Rcpp::NumericMatrix posteriors, int nthreads = 1);
 RcppExport SEXP kfoots_pwhichmax(SEXP posteriorsSEXP, SEXP nthreadsSEXP) {
@@ -252,6 +301,25 @@ BEGIN_RCPP
         Rcpp::traits::input_parameter< Rcpp::List >::type ucs(ucsSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
         Rcpp::List __result = fitModels(counts, posteriors, models, ucs, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// fitModelsGapMat
+Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads = 1);
+RcppExport SEXP kfoots_fitModelsGapMat(SEXP countsSEXP, SEXP posteriorsSEXP, SEXP modelsSEXP, SEXP ucsSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< SEXP >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type posteriors(posteriorsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::List >::type models(modelsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::List >::type ucs(ucsSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::List __result = fitModelsGapMat(counts, posteriors, models, ucs, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);
