@@ -80,16 +80,8 @@ colSumsDouble <- function(nums, nthreads = 1L) {
     .Call('kfoots_colSumsDouble', PACKAGE = 'kfoots', nums, nthreads)
 }
 
-nbinomLoglik <- function(counts, mu, r, nthreads = 1L) {
-    .Call('kfoots_nbinomLoglik', PACKAGE = 'kfoots', counts, mu, r, nthreads)
-}
-
-fitMultinom <- function(counts, posteriors, nthreads = 1L) {
-    .Call('kfoots_fitMultinom', PACKAGE = 'kfoots', counts, posteriors, nthreads)
-}
-
-lLik <- function(counts, model, ucs, mConst, nthreads = 1L) {
-    .Call('kfoots_lLik', PACKAGE = 'kfoots', counts, model, ucs, mConst, nthreads)
+rowSumsDouble <- function(mat, nthreads = 1L) {
+    .Call('kfoots_rowSumsDouble', PACKAGE = 'kfoots', mat, nthreads)
 }
 
 lLikMat <- function(counts, models, ucs, mConst, lliks, nthreads = 1L) {
@@ -106,13 +98,5 @@ fitNB_inner <- function(counts, posteriors, initR = -1) {
 
 fitModels <- function(counts, posteriors, models, ucs, nthreads = 1L) {
     .Call('kfoots_fitModels', PACKAGE = 'kfoots', counts, posteriors, models, ucs, nthreads)
-}
-
-fitNBs <- function(post, mus, rs, ucs, nthreads = 1L) {
-    invisible(.Call('kfoots_fitNBs', PACKAGE = 'kfoots', post, mus, rs, ucs, nthreads))
-}
-
-rowSumsDouble <- function(mat, nthreads = 1L) {
-    .Call('kfoots_rowSumsDouble', PACKAGE = 'kfoots', mat, nthreads)
 }
 

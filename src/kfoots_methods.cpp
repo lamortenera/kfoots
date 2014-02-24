@@ -95,20 +95,29 @@ Rcpp::NumericVector colSumsDouble(Rcpp::NumericMatrix nums, int nthreads=1){
 	Mat<double> mat = asMat(nums);
 	Rcpp::NumericVector ret(mat.ncol);
 	Vec<double> vec = asVec(ret);
-	
 	colSums(mat, vec, nthreads);
 	return ret;
 }
 
+// [[Rcpp::export]]
+Rcpp::NumericVector rowSumsDouble(Rcpp::NumericMatrix mat, int nthreads=1){
+	std::vector<long double> acc(mat.nrow(), 0);
+	rowSums<double, long double>(asMat(mat), asVec(acc), nthreads);
+	Rcpp::NumericVector ret(mat.nrow());
+	for (int i = 0, e = mat.nrow(); i < e; ++i){ret[i] = acc[i];}
+	return ret;
+}
 
+/*
 // [[Rcpp::export]]
 Rcpp::NumericVector nbinomLoglik(Rcpp::IntegerVector counts, double mu, double r, int nthreads=1){
 	Rcpp::NumericVector res(counts.length());
 	nbinomLoglik_core(asVec(counts), mu, r, asVec(res), std::max(nthreads, 1));
 	return res;
 }
+*/
 
-
+/*
 // [[Rcpp::export]]
 Rcpp::NumericVector fitMultinom(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors, int nthreads=1){
 	Mat<int> mat = asMat(counts);
@@ -116,7 +125,7 @@ Rcpp::NumericVector fitMultinom(Rcpp::IntegerMatrix counts, Rcpp::NumericVector 
 	fitMultinom_core(mat, asVec(posteriors), asVec(fit), std::max(nthreads, 1));
 	return fit;
 }
-
+*/
 
 static inline Rcpp::List writeModels(Vec<double> mus, Vec<double> rs, Mat<double> ps){
 	int nmod = mus.len;
@@ -131,6 +140,7 @@ static inline Rcpp::List writeModels(Vec<double> mus, Vec<double> rs, Mat<double
 }
 
 
+/*
 // [[Rcpp::export]]
 Rcpp::NumericVector lLik(Rcpp::IntegerMatrix counts, Rcpp::List model, Rcpp::List ucs, Rcpp::NumericVector mConst, int nthreads=1){
 	
@@ -158,7 +168,7 @@ Rcpp::NumericVector lLik(Rcpp::IntegerMatrix counts, Rcpp::List model, Rcpp::Lis
 	
 	return lliks;
 }
-
+*/
 
 // [[Rcpp::export]]
 void lLikMat(Rcpp::IntegerMatrix counts, Rcpp::List models, 
@@ -245,6 +255,7 @@ Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors,
 	return writeModels(mus, rs, ps);
 }
 
+/*
 // [[Rcpp::export]]
 void fitNBs(
 						Rcpp::NumericMatrix post, 
@@ -259,12 +270,5 @@ void fitNBs(
 	std::vector<double> tmpNB(uniqueCS.length()*mus.length());
 	fitNBs_core(asMat(post), asVec(mus), asVec(rs), preproc, asMat(tmpNB, mus.length()), nthreads);
 }
+*/
 
-// [[Rcpp::export]]
-Rcpp::NumericVector rowSumsDouble(Rcpp::NumericMatrix mat, int nthreads=1){
-	std::vector<long double> acc(mat.nrow(), 0);
-	rowSums<double, long double>(asMat(mat), asVec(acc), nthreads);
-	Rcpp::NumericVector ret(mat.nrow());
-	for (int i = 0, e = mat.nrow(); i < e; ++i){ret[i] = acc[i];}
-	return ret;
-}

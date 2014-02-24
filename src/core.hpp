@@ -6,26 +6,7 @@
 #include <math.h>
 #include "optim.cpp"
 
-//this will slow down a bit, but it's safe... hopefully they will fix it in R 3.1...
-//the caller has the responsibility that mu and r are >= 0
-//this thing can be broken...
-#define lognbinom(c, mu, r) (std::isfinite(mu*r)?Rf_dnbinom_mu(c, r, mu, 1):Rf_dpois(c, mu, 1))
-
-struct CachedLFact{
-	std::unordered_map<int, double> cache;
-	CachedLFact(double load_factor){
-		cache.max_load_factor(load_factor);
-	}
-	
-	inline double operator()(int n){
-		if (n <= 1){ return 0; }
-		double cachedValue = cache[n];
-		if (cachedValue == 0){//value not present in cache
-			cache[n] = cachedValue = Rf_lgammafn(n + 1);
-		}
-		return cachedValue;
-	}
-};
+/* MAP 2 UNIQUE ROUTINES */
 
 struct Avatar {
 	int count;
@@ -100,6 +81,24 @@ static void subsetM2U_core(Vec<int> uvalues, Vec<int> map, Vec<int> subset, std:
 }
 
 
+/* MULTINOM CONST ROUTINES */
+
+struct CachedLFact{
+	std::unordered_map<int, double> cache;
+	CachedLFact(double load_factor){
+		cache.max_load_factor(load_factor);
+	}
+	
+	inline double operator()(int n){
+		if (n <= 1){ return 0; }
+		double cachedValue = cache[n];
+		if (cachedValue == 0){//value not present in cache
+			cache[n] = cachedValue = Rf_lgammafn(n + 1);
+		}
+		return cachedValue;
+	}
+};
+
 //it can be implemented specifically for SWMat. The calls to 
 //the lgamma functions would be the same, but less calls to lfact
 //and faster colSums
@@ -124,16 +123,25 @@ static void getMultinomConst_core(TMat<int> counts, Vec<double> multinomConst, i
 	}
 }
 
-template<template <typename> class TVec>
-static inline void nbinomLoglik_core(TVec<int> counts, double mu, double r, Vec<double> lliks, int nthreads){
-	int e = counts.len;
-	#pragma omp parallel for num_threads(nthreads)
-	for (int i = 0; i < e; ++i){
-		lliks[i] = lognbinom(counts[i], mu, r);
+
+/* FITTING ROUTINES */
+
+//this will slow down a bit, but it's safe... hopefully they will fix it in R 3.1...
+//the caller has the responsibility that mu and r are >= 0
+//this thing can be broken...
+#define lognbinom(c, mu, r) (std::isfinite(mu*r)?Rf_dnbinom_mu(c, r, mu, 1):Rf_dpois(c, mu, 1))
+
+struct NMPreproc {
+	Vec<int> uniqueCS;
+	Vec<int> map;
+	Vec<double> multinomConst;
+	NMPreproc(){}
+	NMPreproc(Vec<int> _uniqueCS, Vec<int> _map, Vec<double> _multinomConst){
+		uniqueCS = _uniqueCS;
+		map = _map;
+		multinomConst = _multinomConst;
 	}
-}
-
-
+};
 
 //data for optimization function.
 //It is always assumed that mu is also the mean count.
@@ -222,18 +230,107 @@ static inline void fitNB_core(Vec<int> counts, Vec<double> posteriors, double* m
 }
 
 
-
-struct NMPreproc {
-	Vec<int> uniqueCS;
-	Vec<int> map;
-	Vec<double> multinomConst;
-	NMPreproc(){}
-	NMPreproc(Vec<int> _uniqueCS, Vec<int> _map, Vec<double> _multinomConst){
-		uniqueCS = _uniqueCS;
-		map = _map;
-		multinomConst = _multinomConst;
+static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
+	int ncol = posteriors.ncol;
+	int nmod = posteriors.nrow;
+	if (mus.len != nmod || rs.len != nmod || tmpNB.ncol*tmpNB.nrow != nmod*preproc.uniqueCS.len){
+		throw std::invalid_argument("invalid parameters passed to fitNBs_core");
 	}
-};
+	Vec<int> map = preproc.map;
+	Vec<int> values = preproc.uniqueCS;
+	
+	//make sure that tmpNB here has the desired format 
+	//(transpose of the one used in llikMat)
+	tmpNB.ncol = nmod;
+	tmpNB.nrow = values.len;
+	
+	//for the fitNB function call, I didn't find anything better than
+	//nested parallel regions... this happens when nmod < nthreads
+	int nthreads_outer = nmod > nthreads? nthreads : nmod;
+	int nthreads_inner = ceil(((double)nthreads)/nmod);
+	omp_set_num_threads(nthreads);
+	omp_set_nested(true);
+	//make sure we're not using more than nthreads threads
+	omp_set_dynamic(true);
+	//fitting the negative binomials
+	
+	#pragma omp parallel for schedule(dynamic) num_threads(nthreads_outer)
+	for (int mod = 0; mod < nmod; ++mod){
+		//set up the tmpNB matrix: it will contain the
+		//posteriors wrt the unique counts
+		double* tmpNBCol = tmpNB.colptr(mod);
+		memset(tmpNBCol, 0, tmpNB.nrow*sizeof(double));
+		//this should be parallelized on the models, because otherwise tmpNBCol is
+		//shared
+		for (int col = 0; col < ncol; ++col){
+			tmpNBCol[map[col]] += posteriors(mod, col);
+		}
+		//call the optimization procedure. This will use up to threads_per_model threads
+		fitNB_core(values, Vec<double>(tmpNBCol, tmpNB.nrow), &mus[mod], &rs[mod], rs[mod], nthreads_inner);
+	}
+}
+
+//ps matrix needs to be clean at the beginning
+template<template <typename> class TMat>
+static void fitMultinoms_core(TMat<int> counts, Mat<double> posteriors, Mat<double> ps, int nthreads){
+	int nmod = posteriors.nrow;
+	int nrow = counts.nrow;
+	int ncol = counts.ncol;
+	
+	#pragma omp parallel num_threads(nthreads)
+	{
+		std::vector<double> loc_ps_std(nrow*nmod, 0);
+		Mat<double> loc_ps = asMat(loc_ps_std, nmod);
+		if (nmod == 1){//separate case with one model for efficiency
+			#pragma omp for schedule(static) nowait
+			for (int col = 0; col < ncol; ++col){
+				double post = posteriors[col];
+				if (post > 0){
+					int* countsCol = counts.colptr(col);
+					for (int row = 0; row < nrow; ++row){
+						loc_ps[row] += countsCol[row]*post;
+					}
+				}
+			}
+		} else {
+			#pragma omp for schedule(static) nowait
+			for (int col = 0; col < ncol; ++col){
+				//This you could probably do better with BLAS...
+				double* postCol = posteriors.colptr(col);
+				int* countsCol = counts.colptr(col);
+				for (int mod = 0; mod < nmod; ++mod, ++postCol){
+					double post = *postCol;
+					if (post > 0){
+						double* loc_psCol = loc_ps.colptr(mod);
+						for (int row = 0; row < nrow; ++row){
+							loc_psCol[row] += countsCol[row]*post;
+						}
+					}
+				}
+			}
+		}
+		
+		#pragma omp critical
+		{
+			for (int i = 0, e = nrow*nmod; i < e; ++i){
+				ps[i] += loc_ps[i];
+			}
+		}
+		#pragma omp barrier
+		//ps contains now the non-normalized optimal ps parameter, normalize!
+		//parallelization is probably overkill, but can it be worse than without?
+		
+		#pragma omp for schedule(static)
+		for (int mod = 0; mod < nmod; ++mod){
+			double* psCol = ps.colptr(mod);
+			double sum = 0;
+			for (int row = 0; row < nrow; ++row){sum += psCol[row];}
+			for (int row = 0; row < nrow; ++row){psCol[row] /= sum;}
+		}
+	}
+}
+
+
 
 static inline void parseModel(Rcpp::List model, double* mu, double* r, double** ps, int* footlen){
 	Rcpp::NumericVector pstmp = model["ps"];
@@ -262,62 +359,7 @@ static inline void parseModels(Rcpp::List models, Vec<double> mus, Vec<double> r
 	}
 }
 
-
-
-template<template <typename> class TMat>
-static void getLlik(TMat<int> counts, double mu, double r, Vec<double> ps, Vec<double> llik, NMPreproc& preproc, int nthreads){
-	int len = ps.len;
-	if (len != counts.nrow) throw std::invalid_argument("the counts matrix doesn't have the right number of rows");
-	if (counts.ncol != preproc.map.len) throw std::invalid_argument("the preprocessed data were not computed on the same count matrix");
-	
-	nthreads = std::max(1, nthreads);
-	
-	//pre-compute all the log(p) 
-	std::vector<double> logP(len);
-	for (int i = 0; i < len; ++i){
-		logP[i] = log(ps[i]);
-	}
-	
-	
-	//iterate through each column
-	const int* map = preproc.map.ptr;
-	const double* mtnm = preproc.multinomConst.ptr;
-	const double* logp = logP.data();
-	double* llikptr = llik.ptr;
-	const int ncol = counts.ncol;
-	const int nrow = counts.nrow;
-	const int* uniqueCS = preproc.uniqueCS.ptr;
-	const int nUCS = preproc.uniqueCS.len;
-	//temporary storage for the negative binomial
-	std::vector<double> std_tmpNB(nUCS);
-	double* tmpNB = std_tmpNB.data();
-	
-	
-	#pragma omp parallel num_threads(nthreads)
-	{
-		//compute all the log neg binom on the unique column sums
-		#pragma omp for schedule(static)
-		for (int c = 0; c < nUCS; ++c){
-			tmpNB[c] = lognbinom(uniqueCS[c], mu, r);
-		}
-		
-		//contribution of the multinomial
-		#pragma omp for schedule(static)
-		for (int col = 0; col < ncol; ++col){
-			double tmp = tmpNB[map[col]] + mtnm[col];
-			int* currcount = counts.colptr(col);
-			const double* currlogp = logp;
-			for (int row = 0; row < nrow; ++row, ++currcount, ++currlogp){
-				int c = *currcount;
-				if (c != 0){
-					tmp += c*(*currlogp);
-				}
-			}
-			llikptr[col] = tmp;
-		}
-	}
-}
-
+/* LOG LIKELIHOOD ROUTINES  */
 
 template<template <typename> class TMat>
 static void lLikMat_core(TMat<int> counts, Vec<double> mus, Vec<double> rs, Mat<double> ps, Mat<double> llik, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
@@ -337,83 +379,76 @@ static void lLikMat_core(TMat<int> counts, Vec<double> mus, Vec<double> rs, Mat<
 	std::vector<double> logPsSTD(nrow*nmodels);
 	Mat<double> logPs = asMat(logPsSTD, nmodels);
 	
+	//pre-compute all the log(p)
+	for (int i = 0; i < logPsSize; ++i){
+		logPs[i] = log(ps[i]);
+	}
 	
-	#pragma omp parallel num_threads(nthreads)
-	{
-		//compute all the log neg binom on the unique column sums
-		//Here the outer loop is on the models because I think it divides the
-		//computation more evenly (even if we need to collapse): uniqueCS
-		//is sorted...
-		#pragma omp for schedule(static) collapse(2) nowait
-		for (int p = 0; p < nmodels; ++p){
+	/* MAIN LOOP */
+	if (nmodels==1){ //separate case where there is only one model, for efficiency
+		double mu = mus[0], r = rs[0]; double* llikptr = llik.ptr;
+		#pragma omp parallel num_threads(nthreads)
+		{
+			#pragma omp for schedule(static)
 			for (int c = 0; c < nUCS; ++c){
-				tmpNB(p,c) = lognbinom(uniqueCS[c], mus[p], rs[p]);
+				tmpNB[c] = lognbinom(uniqueCS[c], mu, r);
 			}
-		}
-		
-		//pre-compute all the log(p)
-		#pragma omp for schedule(static) 
-		for (int i = 0; i < logPsSize; ++i){
-			logPs[i] = log(ps[i]);
-		}
-		
-		//compute and add contribution of the multinomial 
-		#pragma omp for schedule(static) 
-		for (int col = 0; col < ncol; ++col){
-			int* countsCol = counts.colptr(col);;
-			double* llikCol = llik.colptr(col);
-			double mtnm = mtnmConst[col];
-			double* tmpNBcol = tmpNB.colptr(map[col]);
 			
-			for (int mod = 0; mod < nmodels; ++mod){
-				double tmp = tmpNBcol[mod] + mtnm;
-				double* logp = logPs.colptr(mod);
-				for (int row = 0; row < nrow; ++row){
-					int c = countsCol[row];
+			//contribution of the multinomial
+			#pragma omp for schedule(static)
+			for (int col = 0; col < ncol; ++col){
+				double tmp = tmpNB[map[col]] + mtnmConst[col];
+				int* currcount = counts.colptr(col);
+				const double* currlogp = logPs.ptr;
+				for (int row = 0; row < nrow; ++row, ++currcount, ++currlogp){
+					int c = *currcount;
 					if (c != 0){
-						tmp += c*logp[row];
+						tmp += c*(*currlogp);
 					}
 				}
-				llikCol[mod] = tmp;
+				llikptr[col] = tmp;
 			}
 		}
-	}
-}
-
-//fit vector should be empty at the beginning
-template<template <typename> class TMat>
-static inline void fitMultinom_core(TMat<int> counts, Vec<double> posteriors, Vec<double> fit, int nthreads){
-	int nrow = counts.nrow;
-	int ncol = counts.ncol;
-		
-	#pragma omp parallel num_threads(nthreads)
-	{
-		std::vector<double> locFit(nrow, 0);
-		#pragma omp for nowait
-		for (int col = 0; col < ncol; ++col){
-			double post = posteriors[col];
-			if (post > 0){
-				int* countsCol = counts.colptr(col);
-				for (int row = 0; row < nrow; ++row){
-					locFit[row] += countsCol[row]*post;
+	} else { 
+		#pragma omp parallel num_threads(nthreads)
+		{
+			//compute all the log neg binom on the unique column sums
+			//Here the outer loop is on the models because I think it divides the
+			//computation more evenly (even if we need to collapse): uniqueCS
+			//is sorted...
+			#pragma omp for schedule(static) collapse(2)
+			for (int p = 0; p < nmodels; ++p){
+				for (int c = 0; c < nUCS; ++c){
+					tmpNB(p,c) = lognbinom(uniqueCS[c], mus[p], rs[p]);
+				}
+			}
+			
+			//compute and add contribution of the multinomial 
+			#pragma omp for schedule(static) 
+			for (int col = 0; col < ncol; ++col){
+				int* countsCol = counts.colptr(col);;
+				double* llikCol = llik.colptr(col);
+				double mtnm = mtnmConst[col];
+				double* tmpNBcol = tmpNB.colptr(map[col]);
+				
+				for (int mod = 0; mod < nmodels; ++mod){
+					double tmp = tmpNBcol[mod] + mtnm;
+					double* logp = logPs.colptr(mod);
+					for (int row = 0; row < nrow; ++row){
+						int c = countsCol[row];
+						if (c != 0){
+							tmp += c*logp[row];
+						}
+					}
+					llikCol[mod] = tmp;
 				}
 			}
 		}
-		#pragma omp critical
-		{
-			for (int row = 0; row < nrow; ++row){
-				fit[row] += locFit[row];
-			}
-		}
 	}
-	
-	
-	double sum = 0;
-	for (int row = 0; row < nrow; ++row){sum += fit[row];}
-	for (int row = 0; row < nrow; ++row){fit[row] /= sum;}
 }
 
 
+/* LOG LIKELIHOOD TO POSTERIORS ROUTINES */
 
 //at the beginning mixcoeff contains the mixture coefficient,
 //at the end it contains the newly-trained coefficients
@@ -639,91 +674,4 @@ static inline double forward_backward_core(Vec<double> initP, Mat<double> trans,
 	}
 	
 	return (double) tot_llik;
-}
-
-static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
-	int ncol = posteriors.ncol;
-	int nmod = posteriors.nrow;
-	if (mus.len != nmod || rs.len != nmod || tmpNB.ncol*tmpNB.nrow != nmod*preproc.uniqueCS.len){
-		throw std::invalid_argument("invalid parameters passed to fitNBs_core");
-	}
-	Vec<int> map = preproc.map;
-	Vec<int> values = preproc.uniqueCS;
-	
-	//make sure that tmpNB here has the desired format 
-	//(transpose of the one used in llikMat)
-	tmpNB.ncol = nmod;
-	tmpNB.nrow = values.len;
-	
-	//for the fitNB function call, I didn't find anything better than
-	//nested parallel regions... this happens when nmod < nthreads
-	int nthreads_outer = nmod > nthreads? nthreads : nmod;
-	int nthreads_inner = ceil(((double)nthreads)/nmod);
-	omp_set_num_threads(nthreads);
-	omp_set_nested(true);
-	//make sure we're not using more than nthreads threads
-	omp_set_dynamic(true);
-	//fitting the negative binomials
-	
-	#pragma omp parallel for schedule(dynamic) num_threads(nthreads_outer)
-	for (int mod = 0; mod < nmod; ++mod){
-		//set up the tmpNB matrix: it will contain the
-		//posteriors wrt the unique counts
-		double* tmpNBCol = tmpNB.colptr(mod);
-		memset(tmpNBCol, 0, tmpNB.nrow*sizeof(double));
-		//this should be parallelized on the models, because otherwise tmpNBCol is
-		//shared
-		for (int col = 0; col < ncol; ++col){
-			tmpNBCol[map[col]] += posteriors(mod, col);
-		}
-		//call the optimization procedure. This will use up to threads_per_model threads
-		fitNB_core(values, Vec<double>(tmpNBCol, tmpNB.nrow), &mus[mod], &rs[mod], rs[mod], nthreads_inner);
-	}
-}
-
-//ps does not need to be clean
-template<template <typename> class TMat>
-static void fitMultinoms_core(TMat<int> counts, Mat<double> posteriors, Mat<double> ps, int nthreads){
-	int nmod = posteriors.nrow;
-	int nrow = counts.nrow;
-	int ncol = counts.ncol;
-	
-	#pragma omp parallel num_threads(nthreads)
-	{
-		//fitting the multinomial 
-		std::vector<double> tmp_ps_std(nrow*nmod, 0);
-		Mat<double> tmp_ps = asMat(tmp_ps_std, nmod);
-		#pragma omp for schedule(static) nowait
-		for (int col = 0; col < ncol; ++col){
-			//This you could probably do better with BLAS...
-			double* postCol = posteriors.colptr(col);
-			int* countCol = counts.colptr(col);
-			for (int mod = 0; mod < nmod; ++mod, ++postCol){
-				double post = *postCol;
-				double* psCol = tmp_ps.colptr(mod);
-				for (int row = 0; row < nrow; ++row){
-					psCol[row] += countCol[row]*post;
-				}
-			}
-		}
-		
-		
-		#pragma omp critical
-		{
-			for (int i = 0, e = nrow*nmod; i < e; ++i){
-				ps[i] += tmp_ps[i];
-			}
-		}
-		#pragma omp barrier
-		//ps contains now the non-normalized optimal ps parameter, normalize!
-		//parallelization is probably overkill, but can it be worse than without?
-		
-		#pragma omp for schedule(static)
-		for (int mod = 0; mod < nmod; ++mod){
-			double* psCol = ps.colptr(mod);
-			double sum = 0;
-			for (int row = 0; row < nrow; ++row){sum += psCol[row];}
-			for (int row = 0; row < nrow; ++row){psCol[row] /= sum;}
-		}
-	}
 }

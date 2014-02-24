@@ -173,54 +173,16 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
-// nbinomLoglik
-Rcpp::NumericVector nbinomLoglik(Rcpp::IntegerVector counts, double mu, double r, int nthreads = 1);
-RcppExport SEXP kfoots_nbinomLoglik(SEXP countsSEXP, SEXP muSEXP, SEXP rSEXP, SEXP nthreadsSEXP) {
+// rowSumsDouble
+Rcpp::NumericVector rowSumsDouble(Rcpp::NumericMatrix mat, int nthreads = 1);
+RcppExport SEXP kfoots_rowSumsDouble(SEXP matSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
         Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type counts(countsSEXP );
-        Rcpp::traits::input_parameter< double >::type mu(muSEXP );
-        Rcpp::traits::input_parameter< double >::type r(rSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type mat(matSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        Rcpp::NumericVector __result = nbinomLoglik(counts, mu, r, nthreads);
-        PROTECT(__sexp_result = Rcpp::wrap(__result));
-    }
-    UNPROTECT(1);
-    return __sexp_result;
-END_RCPP
-}
-// fitMultinom
-Rcpp::NumericVector fitMultinom(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors, int nthreads = 1);
-RcppExport SEXP kfoots_fitMultinom(SEXP countsSEXP, SEXP posteriorsSEXP, SEXP nthreadsSEXP) {
-BEGIN_RCPP
-    SEXP __sexp_result;
-    {
-        Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
-        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type posteriors(posteriorsSEXP );
-        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        Rcpp::NumericVector __result = fitMultinom(counts, posteriors, nthreads);
-        PROTECT(__sexp_result = Rcpp::wrap(__result));
-    }
-    UNPROTECT(1);
-    return __sexp_result;
-END_RCPP
-}
-// lLik
-Rcpp::NumericVector lLik(Rcpp::IntegerMatrix counts, Rcpp::List model, Rcpp::List ucs, Rcpp::NumericVector mConst, int nthreads = 1);
-RcppExport SEXP kfoots_lLik(SEXP countsSEXP, SEXP modelSEXP, SEXP ucsSEXP, SEXP mConstSEXP, SEXP nthreadsSEXP) {
-BEGIN_RCPP
-    SEXP __sexp_result;
-    {
-        Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
-        Rcpp::traits::input_parameter< Rcpp::List >::type model(modelSEXP );
-        Rcpp::traits::input_parameter< Rcpp::List >::type ucs(ucsSEXP );
-        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type mConst(mConstSEXP );
-        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        Rcpp::NumericVector __result = lLik(counts, model, ucs, mConst, nthreads);
+        Rcpp::NumericVector __result = rowSumsDouble(mat, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);
@@ -290,38 +252,6 @@ BEGIN_RCPP
         Rcpp::traits::input_parameter< Rcpp::List >::type ucs(ucsSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
         Rcpp::List __result = fitModels(counts, posteriors, models, ucs, nthreads);
-        PROTECT(__sexp_result = Rcpp::wrap(__result));
-    }
-    UNPROTECT(1);
-    return __sexp_result;
-END_RCPP
-}
-// fitNBs
-void fitNBs(Rcpp::NumericMatrix post, Rcpp::NumericVector mus, Rcpp::NumericVector rs, Rcpp::List ucs, int nthreads = 1);
-RcppExport SEXP kfoots_fitNBs(SEXP postSEXP, SEXP musSEXP, SEXP rsSEXP, SEXP ucsSEXP, SEXP nthreadsSEXP) {
-BEGIN_RCPP
-    {
-        Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type post(postSEXP );
-        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type mus(musSEXP );
-        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type rs(rsSEXP );
-        Rcpp::traits::input_parameter< Rcpp::List >::type ucs(ucsSEXP );
-        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        fitNBs(post, mus, rs, ucs, nthreads);
-    }
-    return R_NilValue;
-END_RCPP
-}
-// rowSumsDouble
-Rcpp::NumericVector rowSumsDouble(Rcpp::NumericMatrix mat, int nthreads = 1);
-RcppExport SEXP kfoots_rowSumsDouble(SEXP matSEXP, SEXP nthreadsSEXP) {
-BEGIN_RCPP
-    SEXP __sexp_result;
-    {
-        Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type mat(matSEXP );
-        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        Rcpp::NumericVector __result = rowSumsDouble(mat, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);
