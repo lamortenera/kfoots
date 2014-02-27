@@ -326,3 +326,74 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
+// asGapMat
+Rcpp::List asGapMat(Rcpp::IntegerMatrix counts, Rcpp::IntegerVector colset, int nrow);
+RcppExport SEXP kfoots_asGapMat(SEXP countsSEXP, SEXP colsetSEXP, SEXP nrowSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type colset(colsetSEXP );
+        Rcpp::traits::input_parameter< int >::type nrow(nrowSEXP );
+        Rcpp::List __result = asGapMat(counts, colset, nrow);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// zScoreThresh
+double zScoreThresh(Rcpp::NumericVector lliks, double z, int nthreads = 1);
+RcppExport SEXP kfoots_zScoreThresh(SEXP lliksSEXP, SEXP zSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type lliks(lliksSEXP );
+        Rcpp::traits::input_parameter< double >::type z(zSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        double __result = zScoreThresh(lliks, z, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// fitModelFromColumns
+Rcpp::List fitModelFromColumns(SEXP gapmat, Rcpp::List model, Rcpp::List ucs, int negstrand = 0, int nthreads = 1);
+RcppExport SEXP kfoots_fitModelFromColumns(SEXP gapmatSEXP, SEXP modelSEXP, SEXP ucsSEXP, SEXP negstrandSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< SEXP >::type gapmat(gapmatSEXP );
+        Rcpp::traits::input_parameter< Rcpp::List >::type model(modelSEXP );
+        Rcpp::traits::input_parameter< Rcpp::List >::type ucs(ucsSEXP );
+        Rcpp::traits::input_parameter< int >::type negstrand(negstrandSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::List __result = fitModelFromColumns(gapmat, model, ucs, negstrand, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// filter
+Rcpp::List filter(Rcpp::IntegerVector cols, Rcpp::NumericVector scores, const double thresh, int overlap);
+RcppExport SEXP kfoots_filter(SEXP colsSEXP, SEXP scoresSEXP, SEXP threshSEXP, SEXP overlapSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type cols(colsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type scores(scoresSEXP );
+        Rcpp::traits::input_parameter< const double >::type thresh(threshSEXP );
+        Rcpp::traits::input_parameter< int >::type overlap(overlapSEXP );
+        Rcpp::List __result = filter(cols, scores, thresh, overlap);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}

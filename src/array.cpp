@@ -127,13 +127,13 @@ struct SWMat {
 		ptr(_ptr), nrow(_nrow), ncol(_ncol), step(_step){}
 	
 	SWMat(Vec<T> vec, int _nrow, int _step){
-		if ((vec.len - nrow) % step != 0) throw std::invalid_argument("the window can be slid a fractional number of times...");
-		
 		ptr = vec.ptr;
 		nrow = _nrow;
 		step = _step;
-		ncol = (vec.len - nrow)/step + 1;
 		
+		if ((vec.len - nrow) % step != 0) throw std::invalid_argument("the window can be slid a fractional number of times...");
+		
+		ncol = (vec.len - nrow)/step + 1;
 	}
 	
 	inline T operator[] (int i) const {return ptr[i];}

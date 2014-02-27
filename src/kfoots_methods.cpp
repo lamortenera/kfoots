@@ -45,7 +45,6 @@ Rcpp::List subsetM2U(Rcpp::List ucs, Rcpp::IntegerVector colidxs){
 	Rcpp::IntegerVector newmap(colidxs.length());
 	std::vector<int> newvalues;
 	subsetM2U_core(asVec(values), asVec(map), asVec(colidxs), newvalues, asVec(newmap));
-	
 	return Rcpp::List::create(Rcpp::Named("values")=Rcpp::IntegerVector(newvalues.begin(),newvalues.end()), Rcpp::Named("map")=newmap);
 }
 
@@ -252,7 +251,7 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericMatrix posteri
 	
 	if (	counts.ncol != posteriors.ncol() ||
 			posteriors.nrow() != nmodels ){
-		throw std::invalid_argument("Invalid arguments passed to fitModels");
+		Rcpp::stop("Invalid arguments passed to fitModels");
 	}
 	
 	//parse or compute preprocessing data (multinomConst is not needed)
@@ -266,11 +265,11 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericMatrix posteri
 	NMPreproc preproc(asVec(uniqueCS), asVec(map), Vec<double>(0,0));
 	
 	Mat<double> postMat = asMat(posteriors);
-	//parsing the models
+	//parsing the models, this memory will also store the new parameters
 	std::vector<double> musSTD(nmodels); Vec<double> mus = asVec(musSTD);
 	std::vector<double> rsSTD(nmodels); Vec<double> rs = asVec(rsSTD);
 	std::vector<double> psSTD(nmodels*footlen); Mat<double> ps = asMat(psSTD, nmodels);
-	parseModels(models, mus, rs, ps);
+	parseModels(models, Vec<double>(0,0), rs, Mat<double>(0,0,0));//we only care about the rs
 	
 	//allocating some temporary memory
 	std::vector<double> tmpNB(uniqueCS.length()*nmodels);
@@ -308,3 +307,182 @@ void fitNBs(
 }
 */
 
+// [[Rcpp::export]]
+Rcpp::List asGapMat(Rcpp::IntegerMatrix counts, Rcpp::IntegerVector colset, int nrow){
+	Rcpp::IntegerVector idxs(colset.length());
+	int* idx = idxs.begin(); int* cls = colset.begin();
+	int oldnrow = counts.nrow();
+	for (int i = 0, e = colset.length(); i < e; ++i){
+		*idx = oldnrow*(*cls  - 1);
+		++idx; ++cls;
+	}
+	
+	Rcpp::List ret = Rcpp::List::create(Rcpp::Named("vec")=counts, Rcpp::Named("colset")=idxs, Rcpp::Named("nrow")=nrow);
+	ret.attr("class") = "gapmat";
+	return ret;
+}
+
+
+
+// [[Rcpp::export]]
+double zScoreThresh(Rcpp::NumericVector lliks, double z, int nthreads=1){
+	//compute mean and sd
+	long double sum = 0;
+	long double ssum = 0;
+	double* it = lliks.begin();
+	const int len = lliks.length();
+	
+	if (len<2) Rcpp::stop("vector too small to compute standard deviation");
+	
+	for (int i = len; i > 0; --i){
+		double d = *it++;
+		sum += d;
+		ssum += d*d;
+	}
+	
+	if (!std::isfinite(sum) || !std::isfinite(ssum)) Rcpp::stop("non-finite values in log likelihood vector");
+	
+	double mean = sum/len;
+	double sd = sqrt((ssum - mean*sum)/(len-1));
+	
+	return mean + z*sd;
+}
+
+
+
+// [[Rcpp::export]]
+Rcpp::List fitModelFromColumns(SEXP gapmat, Rcpp::List model, Rcpp::List ucs, int negstrand = 0, int nthreads=1){
+	GapMat<int> mat = asGapMat<int>(gapmat);
+	
+	if (negstrand < 0 || negstrand > mat.ncol) Rcpp::stop("invalid value for negstrand, must be between 0 and mat.ncol");
+	int posstrand = mat.ncol - negstrand;
+	
+	double mu, r; double* ps; int footlen; parseModel(model, &mu, &r, &ps, &footlen);
+	
+	if (footlen != mat.nrow) Rcpp::stop("invalid model provided");
+	
+	//parse or compute preprocessing data (multinomConst is not needed)
+	if (ucs.length()==0){
+		ucs = mapToUnique(colSumsInt_helper(mat, nthreads));
+	}
+	
+	Rcpp::IntegerVector uniqueCS = ucs["values"];
+	Rcpp::IntegerVector map = ucs["map"];
+	
+	NMPreproc preproc(asVec(uniqueCS), asVec(map), Vec<double>(0,0));
+	
+	//we need an array of ones
+	std::vector<double> std_ones(mat.ncol, 1); Mat<double> ones = asMat(std_ones, mat.ncol);
+	//we need some temporary storage for fitting the negative binomial
+	std::vector<double> std_tmpNB(uniqueCS.length());  Mat<double> tmpNB = asMat(std_tmpNB, 1);
+	
+	fitNBs_core(ones, Vec<double>(&mu, 1), Vec<double>(&r, 1), preproc, tmpNB, nthreads);
+	
+	
+	//fitting multinomial
+	Rcpp::NumericVector rcpp_newps(footlen); Vec<double> newps = asVec(rcpp_newps);
+	
+	
+	std::vector<long double> tmpps(2*footlen);
+	//positive strand
+	if (posstrand > 0) rowSums(mat.subsetCol(0, posstrand), Vec<long double>(tmpps.data(), footlen), nthreads);
+	//negative strand
+	if (negstrand > 0) rowSums(mat.subsetCol(posstrand, mat.ncol), Vec<long double>(tmpps.data()+footlen, footlen), nthreads);
+	//combining the two
+	long double tot = 0;
+	for (int i = 0; i < footlen; ++i){
+		tmpps[i] += tmpps[2*footlen -i -1];
+		tot += tmpps[i];
+	}
+	for (int i = 0; i < footlen; ++i){
+		newps[i] = (tmpps[i]/tot);
+	}
+
+	return Rcpp::List::create(Rcpp::Named("mu")=mu, Rcpp::Named("r")=r, Rcpp::Named("ps")=rcpp_newps);
+}
+
+
+struct matIdx {
+	int row;
+	int col;
+	
+	matIdx(int _row, int _col): row(_row), col(_col) {}
+};
+
+
+// [[Rcpp::export]]
+Rcpp::List filter(Rcpp::IntegerVector cols, Rcpp::NumericVector scores, const double thresh, int overlap){
+	bool scanReverse = cols.length() != scores.length();
+	if (scanReverse && 2*cols.length() != scores.length()) Rcpp::stop("non compatible dimensions");
+	
+	int len = cols.length();
+	int nrow = scanReverse?2:1;
+	
+	if (overlap<=0){//just check where score > thresh
+		std::vector<int> idxs;
+		int nonreverse = 0;
+		int* colsptr = cols.begin();
+		
+		//loop on the rows
+		for (int j = 0; j < nrow; ++j){
+			double* scoresptr = scores.begin() + j;
+			for (int i = 0; i < len; ++i){
+				if (*scoresptr > thresh){
+					idxs.push_back(colsptr[i]);
+				}
+				scoresptr += nrow;
+			}
+			if (j == 0){ nonreverse = idxs.size(); }
+		}
+		//std::cout << "idxs len: " << idxs.size() << std::endl;
+		return Rcpp::List::create(Rcpp::Named("idxs")=Rcpp::wrap(idxs), Rcpp::Named("reverse")=(idxs.size()-nonreverse));
+	} else {
+		/* forward backward-like algorithm for removing overlaps (no sorting) */
+		//cols are assumed to be already sorted!!!!!!
+		std::vector<matIdx> idxs;
+		int* colsptr = cols.begin();
+		double* scoresptr = scores.begin();
+		
+		int lastCol = colsptr[0] - overlap; //nobody will ever overlap with this position
+		double lastScore = thresh;
+		
+			
+		//forward
+		for (int i = 0, e = nrow*len; i < e; ++i){
+			if (*scoresptr > thresh){
+				int col = colsptr[i/nrow]; 
+				double score = *scoresptr;
+				if ((col - lastCol >= overlap) || (score > lastScore)){ //valid position: if it overlaps, the score has to be better than the last score
+					idxs.push_back(matIdx(i%nrow, col));
+					lastScore = score;
+					lastCol = col;
+				}
+			}
+			++scoresptr;
+		}
+		//backward, here we don't resize the array, we just signal with a row=-1 when an element is removed
+		int tot = 0; int neg = 0;
+		if (idxs.size() > 0){
+			lastCol = idxs[idxs.size()-1].col + overlap; //nobody will ever overlap with this position
+			for (int i = idxs.size() - 1; i >= 0; --i){
+				if (lastCol - idxs[i].col >= overlap){ //valid position: it doesn't overlap with the next interval
+					lastCol = idxs[i].col;
+					neg += idxs[i].row;
+					++tot;
+				} else {//overlaps, must be excluded
+					idxs[i].row = -1;
+				}
+			}
+		}
+		//fill the final array
+		Rcpp::IntegerVector rcppidxs(tot);
+		int* posidx = rcppidxs.begin(); int* negidx = posidx + tot - neg;
+		for (int i = 0; i < idxs.size(); ++i){
+			switch (idxs[i].row){
+				case 0: *posidx = idxs[i].col; ++posidx; break;
+				case 1: *negidx = idxs[i].col; ++negidx; break;
+			}
+		}
+		return Rcpp::List::create(Rcpp::Named("idxs")=rcppidxs, Rcpp::Named("reverse")=neg);
+	}
+}

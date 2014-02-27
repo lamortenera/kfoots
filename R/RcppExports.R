@@ -116,3 +116,19 @@ fitModelsGapMat <- function(counts, posteriors, models, ucs, nthreads = 1L) {
     .Call('kfoots_fitModelsGapMat', PACKAGE = 'kfoots', counts, posteriors, models, ucs, nthreads)
 }
 
+asGapMat <- function(counts, colset, nrow) {
+    .Call('kfoots_asGapMat', PACKAGE = 'kfoots', counts, colset, nrow)
+}
+
+zScoreThresh <- function(lliks, z, nthreads = 1L) {
+    .Call('kfoots_zScoreThresh', PACKAGE = 'kfoots', lliks, z, nthreads)
+}
+
+fitModelFromColumns <- function(gapmat, model, ucs, negstrand = 0L, nthreads = 1L) {
+    .Call('kfoots_fitModelFromColumns', PACKAGE = 'kfoots', gapmat, model, ucs, negstrand, nthreads)
+}
+
+filter <- function(cols, scores, thresh, overlap) {
+    .Call('kfoots_filter', PACKAGE = 'kfoots', cols, scores, thresh, overlap)
+}
+

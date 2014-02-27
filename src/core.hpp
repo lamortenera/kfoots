@@ -21,11 +21,15 @@ static inline bool avatarSorter(const Avatar& a, const Avatar& b){
 //values is the input variable, map and uvalues are the output variables
 //map and values can also wrap the same pointer
 static void map2unique_core(Vec<int> values, Vec<int> map, std::vector<int>& uvalues){
-	//this section is not parallelized:
-	//it should be done just once and the running time
-	//should be very low, independent on the number of rows.
+	//this function is not parallelized:
+	//it should be done just once and the running time should be very low
 	
-	//sort the column counts keeping track of the original position
+	if (values.len <= 0){
+		return;//otherwise the code breaks with vectors of length 0
+	}
+	
+	
+	//sort the counts keeping track of the original position
 	Avatar empty(0,0);
 	std::vector<Avatar> avatars(values.len, empty);
 	for (int i = 0, e = values.len; i < e; ++i){
@@ -40,7 +44,7 @@ static void map2unique_core(Vec<int> values, Vec<int> map, std::vector<int>& uva
 	uvalues.push_back(lastVal);
 	map[avatars[0].pos] = 0;
 	
-	for (int i = 0, e = avatars.size(); i < e; ++i){
+	for (int i = 1, e = avatars.size(); i < e; ++i){
 		Avatar& a = avatars[i];
 		if (a.count != lastVal) {
 			lastVal = a.count;
@@ -233,7 +237,7 @@ static inline void fitNB_core(Vec<int> counts, Vec<double> posteriors, double* m
 static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
 	int ncol = posteriors.ncol;
 	int nmod = posteriors.nrow;
-	if (mus.len != nmod || rs.len != nmod || tmpNB.ncol*tmpNB.nrow != nmod*preproc.uniqueCS.len){
+	if (mus.len != nmod || rs.len != nmod || tmpNB.ncol*tmpNB.nrow != nmod*preproc.uniqueCS.len || ncol != preproc.map.len){
 		throw std::invalid_argument("invalid parameters passed to fitNBs_core");
 	}
 	Vec<int> map = preproc.map;
@@ -276,6 +280,9 @@ static void fitMultinoms_core(TMat<int> counts, Mat<double> posteriors, Mat<doub
 	int nmod = posteriors.nrow;
 	int nrow = counts.nrow;
 	int ncol = counts.ncol;
+	if (ncol <= 0 || nrow <= 0 || nmod <= 0 || posteriors.ncol != ncol || ps.nrow != nrow || ps.ncol != nmod){
+		throw std::invalid_argument("invalid parameters passed to fitMultinoms_core");
+	}
 	
 	#pragma omp parallel num_threads(nthreads)
 	{
