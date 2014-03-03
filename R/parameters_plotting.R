@@ -360,3 +360,26 @@ matchClust <- function(clust1, clust2){
 	list(distance=minDist, permutation=apply(perm,2,which.max))
 }
 
+plotFootLine <- function(l, xlab="base pairs from region start", ylab="average value", legend=T, loc="bottom", strandIsCol = TRUE, ...){
+	len <- length(l)/2
+	plot(NULL, xlim=c(1, len), ylim=c(0, max(l)), xlab=xlab, ylab=ylab, ...)
+	abline(v=(1:len), lty=2, col="gray")
+	if (strandIsCol){
+		mat <- matrix(l, ncol=2)
+		posStrand = mat[,1]
+		negStrand = mat[,2]
+	} else {
+		mat <- matrix(l, nrow=2)
+		posStrand = mat[1,]
+		negStrand = mat[2,]
+	}
+	lines(posStrand, col="blue")
+	points(posStrand, col="blue")
+	lines(negStrand, col="red")
+	points(negStrand, col="red")
+	
+	if (legend){
+		legend(loc, legend=c("sense strand", "antisense strand"), col=c("blue", "red"), lty=1, bty="n")
+	}
+}
+
