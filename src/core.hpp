@@ -252,11 +252,11 @@ static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs,
 	//nested parallel regions... this happens when nmod < nthreads
 	int nthreads_outer = nmod > nthreads? nthreads : nmod;
 	int nthreads_inner = ceil(((double)nthreads)/nmod);
-	omp_set_num_threads(nthreads);
 	omp_set_nested(true);
 	//make sure we're not using more than nthreads threads
 	omp_set_dynamic(true);
 	//fitting the negative binomials
+	
 	
 	#pragma omp parallel for schedule(dynamic) num_threads(nthreads_outer)
 	for (int mod = 0; mod < nmod; ++mod){
@@ -366,13 +366,62 @@ static inline void parseModels(Rcpp::List models, Vec<double> mus, Vec<double> r
 	}
 }
 
+
+
+
+/* EXPERIMENTAL LOG LIKELIHOOD ROUTINES  */
+
+static inline double dotprod(int* v1, double* v2, int len){
+	int startup = len % 5;
+	double sum = 0; int i = 0;
+	for (; i < startup; ++i){ sum += v1[i]*v2[i]; }
+	for (; i < len; i += 5){
+		sum += v1[i]*v2[i] + v1[i+1]*v2[i+1] + v1[i+2]*v2[i+2] + v1[i+3]*v2[i+3] + v1[i+4]*v2[i+4]; 
+	}
+	return sum;
+}
+static void lLik_nbinom(double mu, double r, Vec<int> uniqueCS, Vec<double> tmpNB, int nthreads){
+	if (tmpNB.len != uniqueCS.len) throw std::invalid_argument("the preprocessed data were not computed on the same count matrix");
+	/* MAIN LOOP */
+	int nUCS = uniqueCS.len;
+	#pragma omp parallel for schedule(static) num_threads(nthreads)
+	for (int c = 0; c < nUCS; ++c){
+		tmpNB[c] = lognbinom(uniqueCS[c], mu, r);
+	}
+}
+
+template<template <typename> class TMat>
+static void lLik_multinom(TMat<int> counts, Vec<double> ps, Vec<double> llik, Vec<int> mapp, Vec<double> tmpNB, Vec<double> mconst, int nthreads){
+	if (ps.len != counts.nrow) throw std::invalid_argument("incoherent models provided");
+	if (counts.ncol != mapp.len) throw std::invalid_argument("the preprocessed data were not computed on the same count matrix");
+	
+	int ncol = counts.ncol;
+	int nrow = counts.nrow;
+	int* map = mapp.ptr;
+	double* llikptr = llik.ptr;
+	double* mtnmConst = mconst.ptr;
+	std::vector<double> logPsSTD(nrow);
+	Vec<double> logPs = asVec(logPsSTD);
+	
+	//pre-compute all the log(p)
+	for (int i = 0; i < nrow; ++i){ logPs[i] = log(ps[i]);}
+	
+	/* MAIN LOOP */
+	#pragma omp parallel for schedule(static) num_threads(nthreads)
+	for (int col = 0; col < ncol; ++col){
+		llikptr[col] = tmpNB[map[col]] + mtnmConst[col] + dotprod(counts.colptr(col), logPs.ptr, nrow);
+	}
+}
+
+
+
+
 /* LOG LIKELIHOOD ROUTINES  */
 
 template<template <typename> class TMat>
 static void lLikMat_core(TMat<int> counts, Vec<double> mus, Vec<double> rs, Mat<double> ps, Mat<double> llik, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
 	if (rs.len != mus.len || mus.len != ps.ncol || ps.nrow != counts.nrow) throw std::invalid_argument("incoherent models provided");
 	if (counts.ncol != preproc.map.len) throw std::invalid_argument("the preprocessed data were not computed on the same count matrix");
-	
 	
 	nthreads = std::max(1, nthreads);
 	int nmodels = mus.len;
@@ -393,7 +442,7 @@ static void lLikMat_core(TMat<int> counts, Vec<double> mus, Vec<double> rs, Mat<
 	
 	/* MAIN LOOP */
 	if (nmodels==1){ //separate case where there is only one model, for efficiency
-		double mu = mus[0], r = rs[0]; double* llikptr = llik.ptr;
+		double mu = mus[0], r = rs[0]; double* llikptr = llik.ptr; 
 		#pragma omp parallel num_threads(nthreads)
 		{
 			#pragma omp for schedule(static)
@@ -416,6 +465,7 @@ static void lLikMat_core(TMat<int> counts, Vec<double> mus, Vec<double> rs, Mat<
 				llikptr[col] = tmp;
 			}
 		}
+		
 	} else { 
 		#pragma omp parallel num_threads(nthreads)
 		{

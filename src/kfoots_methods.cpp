@@ -1,7 +1,7 @@
 #include <Rcpp.h>
-#include <boost/unordered_map.hpp>
 #include "core.hpp"
 #include <sys/time.h>
+#include <algorithm> 
 
 // [[Rcpp::export]]
 Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector mix_coeff, Rcpp::NumericMatrix posteriors, int nthreads=1){
@@ -183,8 +183,9 @@ Rcpp::NumericVector lLik(Rcpp::IntegerMatrix counts, Rcpp::List model, Rcpp::Lis
 
 template<template <typename> class TMat>
 inline void lLikMat_helper(TMat<int> counts, Rcpp::List models, 
-		Rcpp::List ucs, Rcpp::NumericVector mConst, Rcpp::NumericMatrix lliks,
+		Rcpp::List ucs, Rcpp::NumericVector mConst, Rcpp::NumericVector lliks,
 		int nthreads=1){
+	
 	
 	//parse or compute preprocessing data
 	if (ucs.length()==0){
@@ -194,8 +195,8 @@ inline void lLikMat_helper(TMat<int> counts, Rcpp::List models,
 		mConst = getMultinomConst_helper(counts, nthreads);
 	}
 	
-	Rcpp::IntegerVector uniqueCS = ucs["values"];
-	Rcpp::IntegerVector map = ucs["map"];
+	Rcpp::IntegerVector uniqueCS = Rcpp::as<Rcpp::IntegerVector>(ucs["values"]);
+	Rcpp::IntegerVector map = Rcpp::as<Rcpp::IntegerVector>(ucs["map"]);
 	NMPreproc preproc(asVec(uniqueCS), asVec(map), asVec(mConst));
 	
 	int nmodels = models.length();
@@ -205,23 +206,26 @@ inline void lLikMat_helper(TMat<int> counts, Rcpp::List models,
 	std::vector<double> rsSTD(nmodels); Vec<double> rs = asVec(rsSTD);
 	std::vector<double> psSTD(nmodels*footlen); Mat<double> ps = asMat(psSTD, nmodels);
 	parseModels(models, mus, rs, ps);
+	//re-formatting the lliks vector
+	if (models.length()*counts.ncol != lliks.length()) Rcpp::stop("wrong length for the lliks vector");
+	Mat<double> lliksmat(lliks.begin(), nmodels, counts.ncol);
 	
 	//allocating some temporary memory
 	std::vector<double> tmpNB(uniqueCS.length()*nmodels);
 	
-	lLikMat_core(counts, mus, rs, ps, asMat(lliks), preproc, asMat(tmpNB, uniqueCS.length()), nthreads);
+	lLikMat_core(counts, mus, rs, ps, lliksmat, preproc, asMat(tmpNB, uniqueCS.length()), nthreads);
 }
 
 // [[Rcpp::export]]
 void lLikMat(	Rcpp::IntegerMatrix counts, Rcpp::List models, 
-					Rcpp::List ucs, Rcpp::NumericVector mConst, Rcpp::NumericMatrix lliks,
+					Rcpp::List ucs, Rcpp::NumericVector mConst, Rcpp::NumericVector lliks,
 					int nthreads=1){
 	lLikMat_helper(asMat(counts), models, ucs, mConst, lliks, nthreads);
 }
 
 // [[Rcpp::export]]
 void lLikGapMat(	SEXP counts, Rcpp::List models, Rcpp::List ucs,
-						Rcpp::NumericVector mConst, Rcpp::NumericMatrix lliks,
+						Rcpp::NumericVector mConst, Rcpp::NumericVector lliks,
 						int nthreads=1){
 	lLikMat_helper(asGapMat<int>(counts), models, ucs, mConst, lliks, nthreads);
 }
@@ -245,14 +249,14 @@ Rcpp::List fitNB_inner(Rcpp::IntegerVector counts, Rcpp::NumericVector posterior
 
 
 template<template <typename> class TMat>
-inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
+inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
 	int nmodels = models.length();
 	int footlen = counts.nrow;
 	
-	if (	counts.ncol != posteriors.ncol() ||
-			posteriors.nrow() != nmodels ){
+	if (	counts.ncol*nmodels != posteriors.length()){
 		Rcpp::stop("Invalid arguments passed to fitModels");
 	}
+	Mat<double> postMat(posteriors.begin(), nmodels, counts.ncol);
 	
 	//parse or compute preprocessing data (multinomConst is not needed)
 	if (ucs.length()==0){
@@ -264,7 +268,6 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericMatrix posteri
 
 	NMPreproc preproc(asVec(uniqueCS), asVec(map), Vec<double>(0,0));
 	
-	Mat<double> postMat = asMat(posteriors);
 	//parsing the models, this memory will also store the new parameters
 	std::vector<double> musSTD(nmodels); Vec<double> mus = asVec(musSTD);
 	std::vector<double> rsSTD(nmodels); Vec<double> rs = asVec(rsSTD);
@@ -323,6 +326,13 @@ Rcpp::List asGapMat(Rcpp::IntegerMatrix counts, Rcpp::IntegerVector colset, int 
 }
 
 
+// [[Rcpp::export]]
+Rcpp::List asSWMat(Rcpp::IntegerVector counts, int step, int nrow){
+	Rcpp::List ret = Rcpp::List::create(Rcpp::Named("vec")=counts, Rcpp::Named("step")=step, Rcpp::Named("nrow")=nrow);
+	ret.attr("class") = "swmat";
+	return ret;
+}
+
 
 // [[Rcpp::export]]
 double zScoreThresh(Rcpp::NumericVector lliks, double z, int nthreads=1){
@@ -334,13 +344,14 @@ double zScoreThresh(Rcpp::NumericVector lliks, double z, int nthreads=1){
 	
 	if (len<2) Rcpp::stop("vector too small to compute standard deviation");
 	
-	for (int i = len; i > 0; --i){
-		double d = *it++;
+	#pragma omp parallel for schedule(static) num_threads(nthreads) reduction(+: sum, ssum)
+	for (int i = 0; i < len; ++i){
+		double d = it[i];
 		sum += d;
 		ssum += d*d;
 	}
 	
-	if (!std::isfinite(sum) || !std::isfinite(ssum)) Rcpp::stop("non-finite values in log likelihood vector");
+	if (!std::isfinite(sum) || !std::isfinite(ssum)) return 0/0;//I couldn't figure out how to generate a NaN otherwise...
 	
 	double mean = sum/len;
 	double sd = sqrt((ssum - mean*sum)/(len-1));
@@ -411,7 +422,7 @@ struct matIdx {
 
 
 // [[Rcpp::export]]
-Rcpp::List filter(Rcpp::IntegerVector cols, Rcpp::NumericVector scores, const double thresh, int overlap){
+Rcpp::List filter(Rcpp::IntegerVector cols, Rcpp::NumericVector scores, const double thresh, int overlap, Rcpp::IntegerVector breaks, int nthreads){
 	bool scanReverse = cols.length() != scores.length();
 	if (scanReverse && 2*cols.length() != scores.length()) Rcpp::stop("non compatible dimensions");
 	
@@ -484,5 +495,97 @@ Rcpp::List filter(Rcpp::IntegerVector cols, Rcpp::NumericVector scores, const do
 			}
 		}
 		return Rcpp::List::create(Rcpp::Named("idxs")=rcppidxs, Rcpp::Named("reverse")=neg);
+	}
+}
+
+// [[Rcpp::export]]
+Rcpp::IntegerVector removeOverlapping(Rcpp::IntegerVector cols, Rcpp::IntegerVector centers, int radius){
+	if (radius <= 0) Rcpp::stop("null or negative radii don't make sense bro...");
+	if (cols.length()*centers.length() == 0) return cols;
+	
+	//get the starts from the centers, let's also add a fake start, higher than the last column
+	std::vector<int> starts(centers.length() + 1); int* s = starts.data(); int* c = centers.begin();
+	for (int i = 0, e = centers.length(); i < e; ++i){ *s = *c - radius + 1; ++s; ++c;}
+	*s = cols[cols.length()-1] + 1;//fake start, no column will ever overlap with this interval
+	int width = 2*radius - 1;
+	
+	//sort the starts
+	std::sort(starts.begin(), starts.end());
+	//go on with filtering. cols are assumed to be already sorted
+	std::vector<int> filtered;
+	c = cols.begin();  //pointers to the last index. 
+	s = starts.data(); //pointer to the last interval
+	int* c_end = cols.end(); int* s_end = s + starts.size();
+	
+	for (; s < s_end; ++s){
+		int stop = *s;
+		while (c < c_end && *c < stop){//these guys do not overlap neither with the previous interval nor with the current
+			filtered.push_back(*c); ++c;
+		}
+		stop = *s + width;
+		while (c < c_end && *c < stop){ ++c; }//these guys overlap with the interval [*s, *s+width]
+	}
+	
+	Rcpp::IntegerVector res = Rcpp::wrap(filtered);
+	return res;
+}
+
+
+// [[Rcpp::export]]
+void nbinom_llik(double mu, double r, Rcpp::IntegerVector uniqueCS, Rcpp::NumericVector tmpNB, int nthreads){
+	lLik_nbinom(mu, r, asVec(uniqueCS), asVec(tmpNB), nthreads);
+}
+
+// [[Rcpp::export]]
+void multinom_llik(SEXP gapmat, Rcpp::NumericVector ps, Rcpp::NumericVector llik, Rcpp::IntegerVector map, Rcpp::NumericVector tmpNB, Rcpp::NumericVector  mconst, int nthreads){
+	lLik_multinom(asGapMat<int>(gapmat), asVec(ps), asVec(llik), asVec(map), asVec(tmpNB), asVec(mconst), nthreads);
+}
+
+// [[Rcpp::export]]
+Rcpp::IntegerVector findBreaks(Rcpp::IntegerVector colset, int overlap, int nthreads){
+	int len = colset.length();
+	double dn = nthreads;
+	
+	if (nthreads == 1){ Rcpp::IntegerVector res(2); res[0] = 0; res[1] = len; return res; }
+	
+	if (overlap <= 0){
+		Rcpp::IntegerVector res(nthreads+1);
+		for (int i = 1; i <= nthreads; ++i){
+			res[i] = round(len*(i/dn));
+		}
+		return res;
+	} else {
+		std::vector<int> breaks(nthreads+1);
+		int valid = 0;
+		
+		#pragma omp parallel for num_threads(nthreads-1) reduction(+:valid)
+		for (int i = 1; i < nthreads; ++i){
+			//just greedily choosing the break point closest to the center
+			int start = round(len*((i-0.5)/dn));
+			int center = round(len*(i/dn));
+			int end = round(len*((i+0.5)/dn));
+			int bestBreak = -1;
+			int* coords = colset.begin();
+			for (int j = start+1; j <= center; ++j){
+				if (coords[j]-coords[j-1] >= overlap) bestBreak = j;
+			}
+			for (int j = end; j > center; --j){
+				if (coords[j]-coords[j-1] >= overlap) bestBreak = j;
+			}
+			breaks[i] = bestBreak;
+			
+			if (bestBreak >= 0) valid = 1;
+		}
+		
+		breaks[0] = 0;
+		breaks[nthreads] = len;
+		valid += 2;
+		
+		Rcpp::IntegerVector res(valid); int j = 0;
+		for (int i = 0; i <= nthreads; ++i){
+			if (breaks[i] >= 0) res[j++] = breaks[i];
+		}
+		
+		return res;
 	}
 }

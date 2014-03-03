@@ -288,7 +288,7 @@ static void rowSums(TMat<TNumMat> mat, Vec<TNumVec> vec, int nthreads){
 		for (int col = 0; col < ncol; ++col){
 			TNumMat* matCol = mat.colptr(col);
 			TNumVec* accIter = accBegin;
-			for (int row = 0; row < nrow; ++row){
+			for (int row = 0; row < nrow; ++row){//this loop should be unrolled...
 				*accIter++ += *matCol++;
 			}
 		}

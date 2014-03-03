@@ -120,6 +120,10 @@ asGapMat <- function(counts, colset, nrow) {
     .Call('kfoots_asGapMat', PACKAGE = 'kfoots', counts, colset, nrow)
 }
 
+asSWMat <- function(counts, step, nrow) {
+    .Call('kfoots_asSWMat', PACKAGE = 'kfoots', counts, step, nrow)
+}
+
 zScoreThresh <- function(lliks, z, nthreads = 1L) {
     .Call('kfoots_zScoreThresh', PACKAGE = 'kfoots', lliks, z, nthreads)
 }
@@ -128,7 +132,23 @@ fitModelFromColumns <- function(gapmat, model, ucs, negstrand = 0L, nthreads = 1
     .Call('kfoots_fitModelFromColumns', PACKAGE = 'kfoots', gapmat, model, ucs, negstrand, nthreads)
 }
 
-filter <- function(cols, scores, thresh, overlap) {
-    .Call('kfoots_filter', PACKAGE = 'kfoots', cols, scores, thresh, overlap)
+filter <- function(cols, scores, thresh, overlap, breaks, nthreads) {
+    .Call('kfoots_filter', PACKAGE = 'kfoots', cols, scores, thresh, overlap, breaks, nthreads)
+}
+
+removeOverlapping <- function(cols, centers, radius) {
+    .Call('kfoots_removeOverlapping', PACKAGE = 'kfoots', cols, centers, radius)
+}
+
+nbinom_llik <- function(mu, r, uniqueCS, tmpNB, nthreads) {
+    invisible(.Call('kfoots_nbinom_llik', PACKAGE = 'kfoots', mu, r, uniqueCS, tmpNB, nthreads))
+}
+
+multinom_llik <- function(gapmat, ps, llik, map, tmpNB, mconst, nthreads) {
+    invisible(.Call('kfoots_multinom_llik', PACKAGE = 'kfoots', gapmat, ps, llik, map, tmpNB, mconst, nthreads))
+}
+
+findBreaks <- function(colset, overlap, nthreads) {
+    .Call('kfoots_findBreaks', PACKAGE = 'kfoots', colset, overlap, nthreads)
 }
 
