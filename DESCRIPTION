@@ -17,3 +17,4 @@ Collate:
     'kfoots.R'
     'hmmfoots.R'
     'parameters_plotting.R'
+    'footscan.R'

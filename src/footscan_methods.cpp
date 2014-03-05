@@ -65,11 +65,6 @@ Rcpp::List fitModelFromColumns(SEXP gapmat, Rcpp::List model, Rcpp::List ucs, in
 	
 	if (footlen != mat.nrow) Rcpp::stop("invalid model provided");
 	
-	//parse or compute preprocessing data (multinomConst is not needed)
-	if (ucs.length()==0){
-		ucs = mapToUnique(colSumsInt_helper(mat, nthreads));
-	}
-	
 	Rcpp::IntegerVector uniqueCS = ucs["values"];
 	Rcpp::IntegerVector map = ucs["map"];
 	
@@ -115,7 +110,7 @@ struct matIdx {
 
 
 // [[Rcpp::export]]
-Rcpp::List filter(Rcpp::IntegerVector cols, Rcpp::NumericVector scores, const double thresh, int overlap, Rcpp::IntegerVector breaks, int nthreads){
+Rcpp::List filter(Rcpp::IntegerVector cols, Rcpp::NumericVector scores, const double thresh, int overlap, Rcpp::IntegerVector breaks){
 	bool scanReverse = cols.length() != scores.length();
 	if (scanReverse && 2*cols.length() != scores.length()) Rcpp::stop("non compatible dimensions");
 	
@@ -123,23 +118,54 @@ Rcpp::List filter(Rcpp::IntegerVector cols, Rcpp::NumericVector scores, const do
 	int nrow = scanReverse?2:1;
 	
 	if (overlap<=0){//just check where score > thresh
-		std::vector<int> idxs;
-		int nonreverse = 0;
-		int* colsptr = cols.begin();
+		int nchunks = breaks.length()-1;
 		
-		//loop on the rows
-		for (int j = 0; j < nrow; ++j){
-			double* scoresptr = scores.begin() + j;
-			for (int i = 0; i < len; ++i){
-				if (*scoresptr > thresh){
-					idxs.push_back(colsptr[i]);
+		std::vector<int> std_sizes(nrow*nchunks);
+		Mat<int> sizes = asMat(std_sizes, nrow);
+		Mat<double> scoresMat = Mat<double>(scores.begin(), nrow, len);
+		Rcpp::IntegerVector res;
+		int reverse = 0;
+		
+		#pragma omp parallel num_threads(nchunks)
+		{
+			std::vector<std::vector<int> > idxs(nrow);
+			int* colsptr = cols.begin();
+			//accumulate indexes separately in each thread and for each row
+			//and store in the shared variable 'sizes' how many indices where valid
+			#pragma omp for
+			for (int t = 0; t < nchunks; ++t){
+				int is = breaks[t], ie = breaks[t+1];
+				double* scoresptr = scoresMat.colptr(is);
+				for (int i = is*nrow, e = ie*nrow; i < e; ++i, ++scoresptr){
+					if (*scoresptr > thresh){
+						idxs[i%nrow].push_back(colsptr[i/nrow]);
+					}
 				}
-				scoresptr += nrow;
+				for (int row = 0; row < nrow; ++row){ sizes(t, row) = idxs[row].size(); }
 			}
-			if (j == 0){ nonreverse = idxs.size(); }
+			//one thread operates on shared variables: count the total
+			//number of valid indices, allocate necessary memory, modify
+			//the 'sizes' vector to indicate to each thread where to start writing
+			#pragma omp master
+			{
+				int totlen = 0;
+				for (int i = 0, e = nrow*nchunks; i < e; ++i){
+					int tmp = sizes[i];
+					sizes[i] = totlen;
+					totlen += tmp;
+				}
+				res = Rcpp::IntegerVector(totlen);
+				if (nrow > 1) reverse = totlen - sizes[nchunks];
+			}
+			//each thread writes its private memory to the final array
+			#pragma omp for 
+			for (int t = 0; t < nchunks; ++t){
+				for (int j = 0; j < nrow; ++j){
+					memcpy(res.begin() + sizes(t, j), idxs[j].data(), sizeof(int)*idxs[j].size());
+				}
+			}
 		}
-		//std::cout << "idxs len: " << idxs.size() << std::endl;
-		return Rcpp::List::create(Rcpp::Named("idxs")=Rcpp::wrap(idxs), Rcpp::Named("reverse")=(idxs.size()-nonreverse));
+		return Rcpp::List::create(Rcpp::Named("idxs")=res, Rcpp::Named("reverse")=reverse);
 	} else {
 		/* forward backward-like algorithm for removing overlaps (no sorting) */
 		//cols are assumed to be already sorted!!!!!!
@@ -234,6 +260,8 @@ void multinom_llik(SEXP gapmat, Rcpp::NumericVector ps, Rcpp::NumericVector llik
 	lLik_multinom(asGapMat<int>(gapmat), asVec(ps), asVec(llik), asVec(map), asVec(tmpNB), asVec(mconst), nthreads);
 }
 
+#define round( d ) ((int) (d + 0.5))
+
 // [[Rcpp::export]]
 Rcpp::IntegerVector findBreaks(Rcpp::IntegerVector colset, int overlap, int nthreads){
 	int len = colset.length();
@@ -254,20 +282,37 @@ Rcpp::IntegerVector findBreaks(Rcpp::IntegerVector colset, int overlap, int nthr
 		#pragma omp parallel for num_threads(nthreads-1) reduction(+:valid)
 		for (int i = 1; i < nthreads; ++i){
 			//just greedily choosing the break point closest to the center
-			int start = round(len*((i-0.5)/dn));
+			int start = std::max(1, round(len*((i-0.5)/dn)));
 			int center = round(len*(i/dn));
 			int end = round(len*((i+0.5)/dn));
-			int bestBreak = -1;
-			int* coords = colset.begin();
-			for (int j = start+1; j <= center; ++j){
-				if (coords[j]-coords[j-1] >= overlap) bestBreak = j;
-			}
-			for (int j = end; j > center; --j){
-				if (coords[j]-coords[j-1] >= overlap) bestBreak = j;
-			}
-			breaks[i] = bestBreak;
+			//I want to make sure that:
+			// start_i <= center_i <= end_i (apart from cases when len is very small)
+			// start_(i+1) = end_i (the whole range is covered: if there is only one break, you will find it)
+			// start_i <= break_i < end_i 
+			// break_i < break_(i+1) (no break is repeated)
 			
-			if (bestBreak >= 0) valid = 1;
+			//std::cout << std::string("start: ") + itoa(start) + " end: " + itoa(end) + "\n" + << std::endl;
+			
+			int* coords = colset.begin();
+			int bpoint = -1;
+			for (int j = std::min(center, end-1); j >= start; --j){
+				if (coords[j]-coords[j-1] >= overlap) {
+					bpoint = j; break;
+				}
+			}
+			int newend = end;
+			if (bpoint != -1){ newend = std::min(end, 2*center - bpoint); }
+			for (int j = center+1; j < newend; ++j){
+				if (coords[j]-coords[j-1] >= overlap) {
+					bpoint = j; break;
+				}
+			}
+			breaks[i] = bpoint;
+			
+			//printf("start: %i, end: %i, center: %i, bpoint: %i\n", start, end, center, bpoint);
+			
+			
+			if (breaks[i] >= 0) valid = 1;
 		}
 		
 		breaks[0] = 0;

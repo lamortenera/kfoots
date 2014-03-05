@@ -79,6 +79,28 @@ getNBs <- function(models){
 	do.call(cbind, lapply(models, function(m) c(m$mu, m$r)))
 }
 
+plotNBs <- function(nbs, eps=0.2, xlab="count",...){
+	nbs <- nbs[,ncol(nbs):1]
+	ys <- seq(0,1, length.out=ncol(nbs))
+	xs <- nbs[1,]
+	sds <- sqrt(xs + (xs^2)/nbs[2,])
+	xlim <- c(min(xs-sds), max(xs+sds))
+	spacer <- 1/(2*(ncol(nbs)-1))
+	ylim <- c(0-spacer,1+spacer)
+	par(yaxs="i")
+	plot(NULL, xlim=xlim, ylim=ylim, yaxt="n", ylab=NA, xlab=xlab, ...)
+	axis(side=2, tick=F, at=ys, labels=colnames(nbs))
+	X <- as.numeric(rbind(xs-sds, xs+sds, NA))
+	Y <- as.numeric(rbind(ys, ys, NA))
+	lines(X, Y)
+	X <- as.numeric(rbind(xs-sds, xs-sds, NA))
+	Y <- as.numeric(rbind(ys - spacer*eps, ys + spacer*eps, NA))
+	lines(X, Y)
+	X <- as.numeric(rbind(xs+sds, xs+sds, NA))
+	lines(X, Y)
+	points(xs, ys)
+}
+
 plotModels <- function(models, mix_coeff, widths=c(0.2,0.5,0.2,0.1)){
 	os <- reorderMat(models)
 	models <- models[os$colIdx]
