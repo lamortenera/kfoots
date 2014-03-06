@@ -3,6 +3,10 @@
 #include <algorithm> 
 
 
+
+#define round( d ) ((int) (d + 0.5))
+
+
 // [[Rcpp::export]]
 Rcpp::List asGapMat(Rcpp::IntegerMatrix counts, Rcpp::IntegerVector colset, int nrow){
 	Rcpp::IntegerVector idxs(colset.length());
@@ -113,58 +117,67 @@ struct matIdx {
 Rcpp::List filter(Rcpp::IntegerVector cols, Rcpp::NumericVector scores, const double thresh, int overlap, Rcpp::IntegerVector breaks){
 	bool scanReverse = cols.length() != scores.length();
 	if (scanReverse && 2*cols.length() != scores.length()) Rcpp::stop("non compatible dimensions");
+	if (breaks.length() < 2 || breaks[0] != 0 || breaks[breaks.length()-1] != cols.length()) Rcpp::stop("invalid breaks vector provided");
+	for (int i  = 1; i < breaks.length(); ++i){ if (breaks[i-1] > breaks[i]) Rcpp::stop("the breaks are not in ascending order"); }
 	
 	int len = cols.length();
 	int nrow = scanReverse?2:1;
 	
 	if (overlap<=0){//just check where score > thresh
 		int nchunks = breaks.length()-1;
+		int vnum = nrow*nchunks;
+		std::vector<int> std_starts(vnum);
+		//it would have been cleaner to make them private variables to each thread,
+		//but there is no resize() function for rcpp vector, so I need to use two
+		//parallel regions because I don't know the size in advance.
+		std::vector<std::vector<int> > idxs(nrow*nchunks);
 		
-		std::vector<int> std_sizes(nrow*nchunks);
-		Mat<int> sizes = asMat(std_sizes, nrow);
+		int* colsptr = cols.begin();
+
+		Mat<int> starts = asMat(std_starts, nchunks);
+		Mat<std::vector<int> > idxsMat = asMat(idxs, nchunks);
+		
+		
 		Mat<double> scoresMat = Mat<double>(scores.begin(), nrow, len);
-		Rcpp::IntegerVector res;
 		int reverse = 0;
 		
-		#pragma omp parallel num_threads(nchunks)
-		{
-			std::vector<std::vector<int> > idxs(nrow);
-			int* colsptr = cols.begin();
-			//accumulate indexes separately in each thread and for each row
-			//and store in the shared variable 'sizes' how many indices where valid
-			#pragma omp for
-			for (int t = 0; t < nchunks; ++t){
-				int is = breaks[t], ie = breaks[t+1];
-				double* scoresptr = scoresMat.colptr(is);
-				for (int i = is*nrow, e = ie*nrow; i < e; ++i, ++scoresptr){
-					if (*scoresptr > thresh){
-						idxs[i%nrow].push_back(colsptr[i/nrow]);
-					}
-				}
-				for (int row = 0; row < nrow; ++row){ sizes(t, row) = idxs[row].size(); }
-			}
-			//one thread operates on shared variables: count the total
-			//number of valid indices, allocate necessary memory, modify
-			//the 'sizes' vector to indicate to each thread where to start writing
-			#pragma omp master
-			{
-				int totlen = 0;
-				for (int i = 0, e = nrow*nchunks; i < e; ++i){
-					int tmp = sizes[i];
-					sizes[i] = totlen;
-					totlen += tmp;
-				}
-				res = Rcpp::IntegerVector(totlen);
-				if (nrow > 1) reverse = totlen - sizes[nchunks];
-			}
-			//each thread writes its private memory to the final array
-			#pragma omp for 
-			for (int t = 0; t < nchunks; ++t){
-				for (int j = 0; j < nrow; ++j){
-					memcpy(res.begin() + sizes(t, j), idxs[j].data(), sizeof(int)*idxs[j].size());
+		//accumulate valid indices in the appropriate vector according to the row and the thread
+		#pragma omp parallel for num_threads(nchunks)
+		for (int t = 0; t < nchunks; ++t){
+			Vec<std::vector<int> > idxsCol = idxsMat.getCol(t);
+			int is = breaks[t], ie = breaks[t+1];
+			double* scoresptr = scoresMat.colptr(is);
+			for (int i = is*nrow, e = ie*nrow; i < e; ++i, ++scoresptr){
+				if (*scoresptr > thresh){
+				//you should implement a custom resize strategy that takes
+				// into account how many indices are left and the growing rate
+					idxsCol[i%nrow].push_back(colsptr[i/nrow]);
 				}
 			}
 		}
+		
+		//std::cout << "accumulation done" << std::endl;
+		
+		//check how much memory needs to be allocated and decide in which portion of the final array 
+		//each vector will be copied 
+		int totlen = 0;
+		for (int row = 0; row < nrow; ++row){
+			for (int t = 0; t < nchunks; ++t){
+				starts(row, t) = totlen;
+				totlen += idxsMat(row, t).size();
+			}
+		}
+		Rcpp::IntegerVector res(totlen);
+		if (nrow > 1) reverse = totlen - starts(1, 0);
+		
+		//each thread writes its private memory to the final array
+		#pragma omp parallel for num_threads(nchunks)
+		for (int t = 0; t < nchunks; ++t){
+			for (int j = 0; j < nrow; ++j){
+				memcpy(res.begin() + starts(j, t), idxsMat(j, t).data(), sizeof(int)*idxsMat(j,t).size());
+			}
+		}
+		
 		return Rcpp::List::create(Rcpp::Named("idxs")=res, Rcpp::Named("reverse")=reverse);
 	} else {
 		/* forward backward-like algorithm for removing overlaps (no sorting) */
@@ -260,7 +273,7 @@ void multinom_llik(SEXP gapmat, Rcpp::NumericVector ps, Rcpp::NumericVector llik
 	lLik_multinom(asGapMat<int>(gapmat), asVec(ps), asVec(llik), asVec(map), asVec(tmpNB), asVec(mconst), nthreads);
 }
 
-#define round( d ) ((int) (d + 0.5))
+
 
 // [[Rcpp::export]]
 Rcpp::IntegerVector findBreaks(Rcpp::IntegerVector colset, int overlap, int nthreads){
