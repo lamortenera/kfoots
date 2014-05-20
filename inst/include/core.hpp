@@ -6,8 +6,9 @@
 #include <math.h>
 #include "optim.cpp"
 
-/* MAP 2 UNIQUE ROUTINES */
 
+
+/* MAP 2 UNIQUE ROUTINES */
 struct Avatar {
 	int count;
 	int pos;

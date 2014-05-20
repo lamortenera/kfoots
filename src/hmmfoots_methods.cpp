@@ -98,7 +98,7 @@ List viterbi(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, Nume
 			}
 		}
 		tot_maxscore += maxscore;
-		vpath[chunk_end - 1] = maxp;
+		vpath[chunk_end - 1] = maxp + 1;
 		for (int i = chunk_end - 2; i >= chunk_start; --i){
 			maxp = backtrack(maxp, i - chunk_start + 1);
 			vpath[i] = maxp + 1; //in R indices are 1-based

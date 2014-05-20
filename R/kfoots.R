@@ -288,29 +288,6 @@ uniqueColumns <- function(counts){
 }
 
 
-#counts columns are loci and rows are positions of the footprint
-#in EM it is important to set old_r as the previous value for the same model,
-#this ensures that the fitted value is better than the old one
-#and it is necessary for the likelihood to increase
-#ucs is the result of map2unique(colSums(counts)) and it is used to speed up computation
-fitModel <- function(counts, posteriors=NULL, old_r=NULL, maxit=100, ucs=NULL, nthreads=1){
-	if (is.null(posteriors))
-		posteriors <- rep(1.0, ncol(counts))
-	
-	#fitting the multinomial
-	ps <- fitMultinom(counts, posteriors, nthreads=nthreads)
-	
-	#fitting the negative binomial
-	#if ucs is provided, no need to compute colSums
-	if (is.null(ucs))
-		ucs <- mapToUnique(colSumsInt(counts, nthreads))
-		
-	res <- fitNB(ucs, posteriors=posteriors, old_r=old_r, maxit=maxit)
-	res$ps <- ps
-	
-	res
-}
-
 #same as before but no fitting is done for the ps variables
 fitNoiseModel <- function(counts, posteriors=NULL, old_r=NULL, maxit=100, ucs=NULL, nthreads=1){
 	if (is.null(posteriors))

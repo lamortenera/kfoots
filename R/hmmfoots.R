@@ -73,7 +73,6 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 	lliks <- matrix(0, nrow=k, ncol=nloci)
 	
 	
-	
 	loglik <- NA
 	converged <- FALSE
 	llhistory <- numeric(maxiter)
@@ -93,7 +92,6 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 		}
 		
 		new_models <- fitModels(counts, posteriors, models, ucs=ucs, nthreads=nthreads)
-		
 		
 		if(iter!=1 && new_loglik < loglik && !compare(new_loglik, loglik, tol))
 			warning(paste0("decrease in log-likelihood at iteration ",iter))

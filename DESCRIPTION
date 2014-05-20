@@ -12,9 +12,3 @@ License: GNU general public license
 Depends:
     Rcpp (>= 0.10.5)
 LinkingTo: Rcpp
-Collate:
-    'RcppExports.R'
-    'kfoots.R'
-    'hmmfoots.R'
-    'parameters_plotting.R'
-    'footscan.R'
