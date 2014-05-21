@@ -60,10 +60,6 @@ mapToUnique <- function(values) {
     .Call('kfoots_mapToUnique', PACKAGE = 'kfoots', values)
 }
 
-subsetM2U <- function(ucs, colidxs) {
-    .Call('kfoots_subsetM2U', PACKAGE = 'kfoots', ucs, colidxs)
-}
-
 getMultinomConst <- function(counts, nthreads = 1L) {
     .Call('kfoots_getMultinomConst', PACKAGE = 'kfoots', counts, nthreads)
 }

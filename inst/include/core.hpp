@@ -6,7 +6,12 @@
 #include <math.h>
 #include "optim.cpp"
 
-
+//it would take too long to organize these headers properly, but conceptually, you should use only the following headers:
+//map2unique_core
+//getMultinomConst_core
+//fitNBs_core
+//fitMultinoms_core
+//lLikMat_core
 
 /* MAP 2 UNIQUE ROUTINES */
 struct Avatar {
@@ -55,35 +60,6 @@ static void map2unique_core(Vec<int> values, Vec<int> map, std::vector<int>& uva
 	}
 }
 
-//subset is a index vector passed from R that we don't want to copy, so subtract 1 to all indices
-static void subsetM2U_core(Vec<int> uvalues, Vec<int> map, Vec<int> subset, std::vector<int>& newuvalues, Vec<int> newmap){
-	if (uvalues.len > 2*subset.len){
-		/* the subset is very small, it is not worth going through the "old" unique values */
-		//call the standard map2unique_core, but prepare the newmap vector
-		for (int i = 0, e = subset.len; i < e; ++i){
-			newmap[i] = uvalues[map[subset[i]-1]];
-		}
-		map2unique_core(newmap, newmap, newuvalues);
-	} else {
-		/* use the "old" unique values as a hashmap to avoid sorting */
-		std::vector<int> hashmap(uvalues.len, -1);
-		//mark with a 1 the counts that are present
-		for (int i = 0, e = subset.len; i < e; ++i){
-			hashmap[map[subset[i]-1]] = 1;
-		}
-		//fill the new uvalues vector and update the indices in hashmap
-		for (int i = 0, e = uvalues.len; i < e; ++i){
-			if (hashmap[i] > 0){
-				newuvalues.push_back(uvalues[i]);
-				hashmap[i] = newuvalues.size() - 1;
-			}
-		}
-		//set up the newmap vector
-		for (int i = 0, e = subset.len; i < e; ++i){
-			newmap[i] = hashmap[map[subset[i]-1]];
-		}
-	}
-}
 
 
 /* MULTINOM CONST ROUTINES */
@@ -270,7 +246,7 @@ static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs,
 		for (int col = 0; col < ncol; ++col){
 			tmpNBCol[map[col]] += posteriors(mod, col);
 		}
-		//call the optimization procedure. This will use up to threads_per_model threads
+		//call the optimization procedure. This will use up to nthreads_inner threads
 		fitNB_core(values, Vec<double>(tmpNBCol, tmpNB.nrow), &mus[mod], &rs[mod], rs[mod], nthreads_inner);
 	}
 }
@@ -339,38 +315,7 @@ static void fitMultinoms_core(TMat<int> counts, Mat<double> posteriors, Mat<doub
 }
 
 
-
-static inline void parseModel(Rcpp::List model, double* mu, double* r, double** ps, int* footlen){
-	Rcpp::NumericVector pstmp = model["ps"];
-	
-	*mu = model["mu"];
-	*r = model["r"];
-	*ps = pstmp.begin();
-	*footlen = pstmp.length();
-}
-
-//that's bad, you should change this and use parseModel
-static inline void parseModels(Rcpp::List models, Vec<double> mus, Vec<double> rs, Mat<double> ps){
-	unsigned int footsize = sizeof(double)*ps.nrow;
-	for (int i = 0; i < models.length(); ++i){
-		Rcpp::List model = models[i];
-		if (mus.ptr != 0){
-			mus[i] = model["mu"]; 
-		}
-		if (rs.ptr != 0){
-			rs[i] = model["r"];
-		}
-		if (ps.ptr != 0){
-			Rcpp::NumericVector currps = model["ps"];
-			memcpy(ps.colptr(i), currps.begin(), footsize);
-		}
-	}
-}
-
-
-
-
-/* EXPERIMENTAL LOG LIKELIHOOD ROUTINES  */
+/* EXPERIMENTAL LOG LIKELIHOOD ROUTINES 
 
 static inline double dotprod(int* v1, double* v2, int len){
 	int startup = len % 5;
@@ -383,7 +328,6 @@ static inline double dotprod(int* v1, double* v2, int len){
 }
 static void lLik_nbinom(double mu, double r, Vec<int> uniqueCS, Vec<double> tmpNB, int nthreads){
 	if (tmpNB.len != uniqueCS.len) throw std::invalid_argument("the preprocessed data were not computed on the same count matrix");
-	/* MAIN LOOP */
 	int nUCS = uniqueCS.len;
 	#pragma omp parallel for schedule(static) num_threads(nthreads)
 	for (int c = 0; c < nUCS; ++c){
@@ -407,17 +351,16 @@ static void lLik_multinom(TMat<int> counts, Vec<double> ps, Vec<double> llik, Ve
 	//pre-compute all the log(p)
 	for (int i = 0; i < nrow; ++i){ logPs[i] = log(ps[i]);}
 	
-	/* MAIN LOOP */
 	#pragma omp parallel for schedule(static) num_threads(nthreads)
 	for (int col = 0; col < ncol; ++col){
 		llikptr[col] = tmpNB[map[col]] + mtnmConst[col] + dotprod(counts.colptr(col), logPs.ptr, nrow);
 	}
 }
+ */
 
 
 
-
-/* LOG LIKELIHOOD ROUTINES  */
+/* LOG LIKELIHOOD ROUTINE  */
 
 template<template <typename> class TMat>
 static void lLikMat_core(TMat<int> counts, Vec<double> mus, Vec<double> rs, Mat<double> ps, Mat<double> llik, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
@@ -503,233 +446,4 @@ static void lLikMat_core(TMat<int> counts, Vec<double> mus, Vec<double> rs, Mat<
 			}
 		}
 	}
-}
-
-
-/* LOG LIKELIHOOD TO POSTERIORS ROUTINES */
-
-//at the beginning mixcoeff contains the mixture coefficient,
-//at the end it contains the newly-trained coefficients
-static inline double llik2posteriors_core(Mat<double> lliks, Vec<double> mix_coeff, Mat<double> posteriors, int nthreads){
-	long double tot = 0;
-	int ncol = lliks.ncol;
-	int nrow = lliks.nrow;
-	
-	std::vector<long double> mix_coeff_acc(nrow, 0);
-	
-	//transform the mix_coeff taking the log
-	for (int row = 0; row < nrow; ++row){
-		mix_coeff[row] = log(mix_coeff[row]);
-	}
-	
-	#pragma omp parallel num_threads(std::max(1, nthreads))
-	{
-		long double thread_tot = 0;
-		std::vector<long double> thread_mix_coeff_acc(nrow, 0); 
-		#pragma omp for nowait
-		for (int col = 0; col < ncol; ++col){
-			double* lliksCol = lliks.colptr(col);
-			double* postCol = posteriors.colptr(col);
-			//adding the mixing coefficients
-			for (int row = 0; row < nrow; ++row){
-				lliksCol[row] += mix_coeff[row];
-			}
-			//getting maximum
-			double cmax = lliksCol[0];
-			for (int row = 1; row < nrow; ++row){
-				if (lliksCol[row] > cmax) {
-					cmax = lliksCol[row];
-				} 
-			}
-			thread_tot += cmax;
-			double psum = 0;
-			//subtracting maximum and exponentiating sumultaneously
-			for (int row = 0; row < nrow; ++row){
-				double tmp = exp(lliksCol[row] - cmax);
-				postCol[row] = tmp;
-				psum += tmp;
-			}
-			thread_tot += log(psum);
-			for (int row = 0; row < nrow; ++row){
-				postCol[row] /= psum;
-				thread_mix_coeff_acc[row] += postCol[row];
-			}
-		}
-		//protected access to the shared variables
-		#pragma omp critical
-		{
-			tot += thread_tot;
-			for (int row = 0; row < nrow; ++row){
-				mix_coeff_acc[row] += thread_mix_coeff_acc[row];
-			}
-		}
-	}
-	
-	//normalizing mix coeff
-	long double norm = 0;
-	for (int row = 0; row < nrow; ++row){
-		norm += mix_coeff_acc[row];
-	}
-	for (int row = 0; row < nrow; ++row){
-		mix_coeff[row] = (double)(mix_coeff_acc[row]/norm);
-	}
-	
-	
-	return (double) tot;
-}
-
-static inline double forward_backward_core(Vec<double> initP, Mat<double> trans, Mat<double> lliks, Vec<int> seqlens, Mat<double> posteriors, Mat<double> new_trans, int nthreads){
-	nthreads = std::max(1, nthreads);
-	
-	int nrow = lliks.nrow;
-	int ncol = lliks.ncol;
-	int nchunk = seqlens.len;
-	
-	//temporary objects 
-	std::vector<int> chunk_startsSTD(seqlens.len, 0);
-	Vec<int> chunk_starts = asVec<int>(chunk_startsSTD);
-	//get the start of each chunk
-	for (int i = 0, acc = 0; i < nchunk; ++i){chunk_starts[i] = acc; acc += seqlens[i];}
-	
-	long double tot_llik = 0;
-	
-	
-	#pragma omp parallel num_threads(nthreads)
-	{
-		//each thread gets one copy of these temporaries
-		std::vector<double> tmpSTD(nrow*nrow, 0); 
-		std::vector<double> thread_new_transSTD(nrow*nrow, 0); 
-		std::vector<double> backward(nrow, 0);
-		std::vector<double> new_backward(nrow, 0);
-		long double thread_llik = 0;
-		
-		Mat<double> tmp = asMat(tmpSTD, nrow);
-		Mat<double> thread_new_trans = asMat(thread_new_transSTD, nrow);
-		
-		/* transform the lliks matrix to the original space (exponentiate). 
-		 * A column-specific factor is multiplied to obtain a better numerical
-		 * stability */
-		#pragma omp for schedule(static) reduction(+:tot_llik)
-		for (int c = 0; c < ncol; ++c){
-			double* llikcol = lliks.colptr(c);
-			/* get maximum llik in the column */
-			double max_llik = llikcol[0];
-			for (int r = 1; r < nrow; ++r){
-				if (llikcol[r] > max_llik){ max_llik = llikcol[r]; }
-			}
-			/* subtract maximum and exponentiate */
-			tot_llik += max_llik;
-			for (int r = 0; r < nrow; ++r, ++llikcol){
-				*llikcol = exp(*llikcol - max_llik);
-			}
-		}
-		
-		/* Do forward and backward loop for each chunk (defined by seqlens)
-		 * Chunks might have very different lengths (that's why dynamic schedule). */
-		#pragma omp for schedule(dynamic,1) nowait
-		for (int o = 0; o < nchunk; ++o){
-			int chunk_start = chunk_starts[o];
-			int chunk_end =  chunk_start + seqlens[o];
-			
-			/* FORWARD LOOP */
-			/* first iteration is from fictitious start state */
-			{
-				double cf = 0;//scaling factor
-				double* emissprob = lliks.colptr(chunk_start);
-				double* forward = posteriors.colptr(chunk_start);
-				for (int r = 0; r < nrow; ++r){
-					double p = emissprob[r]*initP[r];
-					forward[r] = p;
-					cf += p;
-				}
-				for (int r = 0; r < nrow; ++r){
-					forward[r] = forward[r]/cf;
-				}
-				thread_llik += log(cf);
-			}
-			/* all other iterations */
-			for (int i = chunk_start + 1; i < chunk_end; ++i){
-				double cf = 0;//scaling factor
-				double* emissprob = lliks.colptr(i);
-				double* forward = posteriors.colptr(i);
-				double* last_forward = posteriors.colptr(i-1);
-			
-				for (int t = 0; t < nrow; ++t){
-					double* transcol = trans.colptr(t);
-					double acc = 0;
-					for (int s = 0; s < nrow; ++s){
-						acc += last_forward[s]*transcol[s];
-					}
-					acc *= emissprob[t];
-					forward[t] = acc;
-					cf += acc;
-				}
-				for (int t = 0; t < nrow; ++t){
-					forward[t] = forward[t]/cf;
-				}
-				thread_llik += log(cf);
-			}
-			
-			/* BACKWARD LOOP */
-			/* first iteration set backward to 1/k, 
-			 * last column of posteriors is already ok */
-			for (int r = 0; r < nrow; ++r){
-				backward[r] = 1.0/nrow;
-			}
-			for (int i = chunk_end-2; i >= chunk_start; --i){
-				double* emissprob = lliks.colptr(i+1);
-				double* posterior = posteriors.colptr(i);
-				double cf = 0;
-				double norm = 0;
-				/* joint probabilities and backward vector */
-				for (int s = 0; s < nrow; ++s){
-					//the forward variable is going to be overwritten with the posteriors
-					double pc = posterior[s];
-					double acc = 0;
-					
-					for (int t = 0; t < nrow; ++t){
-						double p = trans(s, t)*emissprob[t]*backward[t];
-						tmp(s, t) = pc*p;
-						acc += p;
-					}
-					
-					new_backward[s] = acc;
-					cf += acc;
-				}
-				/* update backward vector */
-				for (int s = 0; s < nrow; ++s){
-					backward[s] = new_backward[s]/cf;
-					norm += backward[s]*posterior[s];
-				}
-				/* update transition probabilities */
-				for (int t = 0, e = nrow*nrow; t < e; ++t){
-					thread_new_trans[t] += tmp[t]/(norm*cf);
-				}
-				/* get posteriors */
-				for (int s = 0; s < nrow; ++s){
-					posterior[s] = posterior[s]*backward[s]/norm;
-				}
-			}
-		}
-		//protected access to the shared variables
-		#pragma omp critical
-		{
-			tot_llik += thread_llik;
-			for (int p = 0, q = nrow*nrow; p < q; ++p){
-				new_trans[p] += thread_new_trans[p];
-			}
-		}
-	}
-
-	/* normalizing new_trans matrix */
-	// should I put it inside the parallel region?
-	// The code to generate the static schedule might be 
-	// slower than this loop....
-	for (int row = 0; row < nrow; ++row){
-		double sum = 0;
-		for (int col = 0; col < nrow; ++col){sum += new_trans(row, col);}
-		for (int col = 0; col < nrow; ++col){new_trans(row, col)/=sum;}
-	}
-	
-	return (double) tot_llik;
 }

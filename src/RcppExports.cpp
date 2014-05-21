@@ -91,22 +91,6 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
-// subsetM2U
-Rcpp::List subsetM2U(Rcpp::List ucs, Rcpp::IntegerVector colidxs);
-RcppExport SEXP kfoots_subsetM2U(SEXP ucsSEXP, SEXP colidxsSEXP) {
-BEGIN_RCPP
-    SEXP __sexp_result;
-    {
-        Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::List >::type ucs(ucsSEXP );
-        Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type colidxs(colidxsSEXP );
-        Rcpp::List __result = subsetM2U(ucs, colidxs);
-        PROTECT(__sexp_result = Rcpp::wrap(__result));
-    }
-    UNPROTECT(1);
-    return __sexp_result;
-END_RCPP
-}
 // getMultinomConst
 Rcpp::NumericVector getMultinomConst(Rcpp::IntegerMatrix counts, int nthreads = 1);
 RcppExport SEXP kfoots_getMultinomConst(SEXP countsSEXP, SEXP nthreadsSEXP) {

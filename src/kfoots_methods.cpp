@@ -2,6 +2,77 @@
 #include "core.hpp"
 #include <algorithm> 
 
+
+
+static inline double llik2posteriors_core(Mat<double> lliks, Vec<double> mix_coeff, Mat<double> posteriors, int nthreads){
+	long double tot = 0;
+	int ncol = lliks.ncol;
+	int nrow = lliks.nrow;
+	
+	std::vector<long double> mix_coeff_acc(nrow, 0);
+	
+	//transform the mix_coeff taking the log
+	for (int row = 0; row < nrow; ++row){
+		mix_coeff[row] = log(mix_coeff[row]);
+	}
+	
+	#pragma omp parallel num_threads(std::max(1, nthreads))
+	{
+		long double thread_tot = 0;
+		std::vector<long double> thread_mix_coeff_acc(nrow, 0); 
+		#pragma omp for nowait
+		for (int col = 0; col < ncol; ++col){
+			double* lliksCol = lliks.colptr(col);
+			double* postCol = posteriors.colptr(col);
+			//adding the mixing coefficients
+			for (int row = 0; row < nrow; ++row){
+				lliksCol[row] += mix_coeff[row];
+			}
+			//getting maximum
+			double cmax = lliksCol[0];
+			for (int row = 1; row < nrow; ++row){
+				if (lliksCol[row] > cmax) {
+					cmax = lliksCol[row];
+				} 
+			}
+			thread_tot += cmax;
+			double psum = 0;
+			//subtracting maximum and exponentiating sumultaneously
+			for (int row = 0; row < nrow; ++row){
+				double tmp = exp(lliksCol[row] - cmax);
+				postCol[row] = tmp;
+				psum += tmp;
+			}
+			thread_tot += log(psum);
+			for (int row = 0; row < nrow; ++row){
+				postCol[row] /= psum;
+				thread_mix_coeff_acc[row] += postCol[row];
+			}
+		}
+		//protected access to the shared variables
+		#pragma omp critical
+		{
+			tot += thread_tot;
+			for (int row = 0; row < nrow; ++row){
+				mix_coeff_acc[row] += thread_mix_coeff_acc[row];
+			}
+		}
+	}
+	
+	//normalizing mix coeff
+	long double norm = 0;
+	for (int row = 0; row < nrow; ++row){
+		norm += mix_coeff_acc[row];
+	}
+	for (int row = 0; row < nrow; ++row){
+		mix_coeff[row] = (double)(mix_coeff_acc[row]/norm);
+	}
+	
+	
+	return (double) tot;
+}
+
+
 // [[Rcpp::export]]
 Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector mix_coeff, Rcpp::NumericMatrix posteriors, int nthreads=1){
 	//copy the vector (I hope...)
@@ -34,17 +105,6 @@ Rcpp::List mapToUnique(Rcpp::IntegerVector values){
 	map2unique_core(valuesVec, mapVec, uniqueCS);
 	
 	return Rcpp::List::create(Rcpp::Named("values")=Rcpp::IntegerVector(uniqueCS.begin(),uniqueCS.end()), Rcpp::Named("map")=map);
-}
-
-
-// [[Rcpp::export]]
-Rcpp::List subsetM2U(Rcpp::List ucs, Rcpp::IntegerVector colidxs){
-	Rcpp::IntegerVector map = Rcpp::as<Rcpp::IntegerVector>(ucs["map"]);
-	Rcpp::IntegerVector values = Rcpp::as<Rcpp::IntegerVector>(ucs["values"]);
-	Rcpp::IntegerVector newmap(colidxs.length());
-	std::vector<int> newvalues;
-	subsetM2U_core(asVec(values), asVec(map), asVec(colidxs), newvalues, asVec(newmap));
-	return Rcpp::List::create(Rcpp::Named("values")=Rcpp::IntegerVector(newvalues.begin(),newvalues.end()), Rcpp::Named("map")=newmap);
 }
 
 
@@ -135,6 +195,33 @@ Rcpp::NumericVector fitMultinom(Rcpp::IntegerMatrix counts, Rcpp::NumericVector 
 	return fit;
 }
 */
+
+static inline void parseModel(Rcpp::List model, double* mu, double* r, double** ps, int* footlen){
+	Rcpp::NumericVector pstmp = model["ps"];
+	
+	*mu = model["mu"];
+	*r = model["r"];
+	*ps = pstmp.begin();
+	*footlen = pstmp.length();
+}
+
+//that's bad, you should change this and use parseModel
+static inline void parseModels(Rcpp::List models, Vec<double> mus, Vec<double> rs, Mat<double> ps){
+	unsigned int footsize = sizeof(double)*ps.nrow;
+	for (int i = 0; i < models.length(); ++i){
+		Rcpp::List model = models[i];
+		if (mus.ptr != 0){
+			mus[i] = model["mu"]; 
+		}
+		if (rs.ptr != 0){
+			rs[i] = model["r"];
+		}
+		if (ps.ptr != 0){
+			Rcpp::NumericVector currps = model["ps"];
+			memcpy(ps.colptr(i), currps.begin(), footsize);
+		}
+	}
+}
 
 static inline Rcpp::List writeModels(Vec<double> mus, Vec<double> rs, Mat<double> ps){
 	int nmod = mus.len;
