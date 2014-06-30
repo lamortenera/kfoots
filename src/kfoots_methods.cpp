@@ -1,5 +1,5 @@
 #include <Rcpp.h>
-#include "core.hpp"
+#include "core.cpp"
 #include <algorithm> 
 
 
@@ -155,9 +155,6 @@ inline Rcpp::IntegerVector colSumsInt_helper(TMat<int> mat, int nthreads=1){
 // [[Rcpp::export]]
 Rcpp::IntegerVector colSumsInt(Rcpp::IntegerMatrix nums, int nthreads=1){return colSumsInt_helper(asMat(nums), nthreads);}
 
-// [[Rcpp::export]]
-Rcpp::IntegerVector colSumsIntSW(SEXP nums, int nthreads=1){return colSumsInt_helper(asSWMat<int>(nums), nthreads);}
-
 
 // [[Rcpp::export]]
 Rcpp::NumericVector colSumsDouble(Rcpp::NumericMatrix nums, int nthreads=1){
@@ -272,7 +269,6 @@ inline void lLikMat_helper(TMat<int> counts, Rcpp::List models,
 		Rcpp::List ucs, Rcpp::NumericVector mConst, Rcpp::NumericVector lliks,
 		int nthreads=1){
 	
-	
 	//parse or compute preprocessing data
 	if (ucs.length()==0){
 		ucs = mapToUnique(colSumsInt_helper(counts, nthreads));
@@ -301,6 +297,7 @@ inline void lLikMat_helper(TMat<int> counts, Rcpp::List models,
 	
 	lLikMat_core(counts, mus, rs, ps, lliksmat, preproc, asMat(tmpNB, uniqueCS.length()), nthreads);
 }
+
 
 // [[Rcpp::export]]
 void lLikMat(	Rcpp::IntegerMatrix counts, Rcpp::List models, 
@@ -369,12 +366,12 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteri
 }
 
 // [[Rcpp::export]]
-Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
+Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
 	return fitModels_helper(asMat(counts), posteriors, models, ucs, nthreads);
 }
 
 // [[Rcpp::export]]
-Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
+Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
 	return fitModels_helper(asGapMat<int>(counts), posteriors, models, ucs, nthreads);
 }
 

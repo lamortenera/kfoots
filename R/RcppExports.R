@@ -76,10 +76,6 @@ colSumsInt <- function(nums, nthreads = 1L) {
     .Call('kfoots_colSumsInt', PACKAGE = 'kfoots', nums, nthreads)
 }
 
-colSumsIntSW <- function(nums, nthreads = 1L) {
-    .Call('kfoots_colSumsIntSW', PACKAGE = 'kfoots', nums, nthreads)
-}
-
 colSumsDouble <- function(nums, nthreads = 1L) {
     .Call('kfoots_colSumsDouble', PACKAGE = 'kfoots', nums, nthreads)
 }

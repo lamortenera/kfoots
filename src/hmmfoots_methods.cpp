@@ -1,5 +1,5 @@
 #include <Rcpp.h>
-#include "core.hpp"
+#include "core.cpp"
 
 
 static inline double forward_backward_core(Vec<double> initP, Mat<double> trans, Mat<double> lliks, Vec<int> seqlens, Mat<double> posteriors, Mat<double> new_trans, int nthreads){
@@ -243,7 +243,7 @@ List viterbi(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, Nume
 				new_scores[t] = llikcol[t] + maxscore;
 			}
 			
-			scores = new_scores;
+			memcpy(scores.begin(), new_scores.begin(), sizeof(double)*k);
 		}
 		
 		/* backtracking */

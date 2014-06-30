@@ -480,3 +480,11 @@ nbinom_logLik <- function(cs, mu, r){
 	dnbinom(cs, mu=mu, size=r, log=T)
 }
 
+lLik <- function(counts, model, ucs=NULL, multinom_const=NULL, nthreads=1){
+	ans <- numeric(ncol(counts))
+	if (is.null(ucs)) ucs <- mapToUnique(colSums(counts))
+	if (is.null(multinom_const)) multinom_const <- getMultinomConst(counts)
+	lLikMat(counts, list(model), ucs, multinom_const, ans, nthreads)
+	
+	ans
+}

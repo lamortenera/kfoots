@@ -26,7 +26,7 @@ static inline bool avatarSorter(const Avatar& a, const Avatar& b){
 
 //values is the input variable, map and uvalues are the output variables
 //map and values can also wrap the same pointer
-static void map2unique_core(Vec<int> values, Vec<int> map, std::vector<int>& uvalues){
+static inline void map2unique_core(Vec<int> values, Vec<int> map, std::vector<int>& uvalues){
 	//this function is not parallelized:
 	//it should be done just once and the running time should be very low
 	
@@ -211,7 +211,7 @@ static inline void fitNB_core(Vec<int> counts, Vec<double> posteriors, double* m
 }
 
 
-static void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
+static inline void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
 	int ncol = posteriors.ncol;
 	int nmod = posteriors.nrow;
 	if (mus.len != nmod || rs.len != nmod || tmpNB.ncol*tmpNB.nrow != nmod*preproc.uniqueCS.len || ncol != preproc.map.len){
@@ -365,7 +365,7 @@ static void lLik_multinom(TMat<int> counts, Vec<double> ps, Vec<double> llik, Ve
 template<template <typename> class TMat>
 static void lLikMat_core(TMat<int> counts, Vec<double> mus, Vec<double> rs, Mat<double> ps, Mat<double> llik, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
 	if (rs.len != mus.len || mus.len != ps.ncol || ps.nrow != counts.nrow) throw std::invalid_argument("incoherent models provided");
-	if (counts.ncol != preproc.map.len) throw std::invalid_argument("the preprocessed data were not computed on the same count matrix");
+	if (counts.ncol != preproc.map.len || counts.ncol != preproc.multinomConst.len) throw std::invalid_argument("the preprocessed data were not computed on the same count matrix");
 	
 	nthreads = std::max(1, nthreads);
 	int nmodels = mus.len;

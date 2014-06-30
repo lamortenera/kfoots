@@ -157,22 +157,6 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
-// colSumsIntSW
-Rcpp::IntegerVector colSumsIntSW(SEXP nums, int nthreads = 1);
-RcppExport SEXP kfoots_colSumsIntSW(SEXP numsSEXP, SEXP nthreadsSEXP) {
-BEGIN_RCPP
-    SEXP __sexp_result;
-    {
-        Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< SEXP >::type nums(numsSEXP );
-        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        Rcpp::IntegerVector __result = colSumsIntSW(nums, nthreads);
-        PROTECT(__sexp_result = Rcpp::wrap(__result));
-    }
-    UNPROTECT(1);
-    return __sexp_result;
-END_RCPP
-}
 // colSumsDouble
 Rcpp::NumericVector colSumsDouble(Rcpp::NumericMatrix nums, int nthreads = 1);
 RcppExport SEXP kfoots_colSumsDouble(SEXP numsSEXP, SEXP nthreadsSEXP) {
@@ -273,14 +257,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // fitModels
-Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads = 1);
+Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads = 1);
 RcppExport SEXP kfoots_fitModels(SEXP countsSEXP, SEXP posteriorsSEXP, SEXP modelsSEXP, SEXP ucsSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
         Rcpp::RNGScope __rngScope;
         Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
-        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type posteriors(posteriorsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type posteriors(posteriorsSEXP );
         Rcpp::traits::input_parameter< Rcpp::List >::type models(modelsSEXP );
         Rcpp::traits::input_parameter< Rcpp::List >::type ucs(ucsSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
@@ -292,14 +276,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // fitModelsGapMat
-Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericMatrix posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads = 1);
+Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads = 1);
 RcppExport SEXP kfoots_fitModelsGapMat(SEXP countsSEXP, SEXP posteriorsSEXP, SEXP modelsSEXP, SEXP ucsSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
         Rcpp::RNGScope __rngScope;
         Rcpp::traits::input_parameter< SEXP >::type counts(countsSEXP );
-        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type posteriors(posteriorsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type posteriors(posteriorsSEXP );
         Rcpp::traits::input_parameter< Rcpp::List >::type models(modelsSEXP );
         Rcpp::traits::input_parameter< Rcpp::List >::type ucs(ucsSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
