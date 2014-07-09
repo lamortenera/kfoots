@@ -147,8 +147,8 @@ static inline double forward_backward_core(Vec<double> initP, Mat<double> trans,
 
 	/* normalizing new_trans matrix */
 	// should I put it inside the parallel region?
-	// The code to generate the static schedule might be 
-	// slower than this loop....
+	// The parallelization overhead might take longer than
+	// this loop....
 	for (int row = 0; row < nrow; ++row){
 		double sum = 0;
 		for (int col = 0; col < nrow; ++col){sum += new_trans(row, col);}

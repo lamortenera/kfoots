@@ -27,7 +27,7 @@
 #'			whole dataset across iterations}
 #'		\item{viterbi}{see output of \code{viterbi}}
 #' @export
-hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, verbose=FALSE, seqlens=ncol(counts)){
+hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, verbose=FALSE, seqlens=ncol(counts), forcePoisson=FALSE){
 	if (!is.matrix(counts))
 		stop("invalid counts variable provided. It must be a matrix")
 	#this will ensure efficiency of certain methods.
@@ -56,6 +56,7 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 		#get initial random models. Need to be kind-of similar to
 		#the count matrix, cannot be completely random
 		models = rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nthreads=nthreads)
+		if (forcePoisson) {for (i in seq_along(models)) {models[[i]]$r <- Inf}}
 	}
 	if (is.na(trans)){
 		trans <- matrix(rep(1/k, k*k), ncol=k)
@@ -92,12 +93,13 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 		}
 		
 		new_models <- fitModels(counts, posteriors, models, ucs=ucs, nthreads=nthreads)
+		if (forcePoisson) {for (i in seq_along(models)) {new_models[[i]]$r <- Inf}}
 		
 		if(iter!=1 && new_loglik < loglik && !compare(new_loglik, loglik, tol))
 			warning(paste0("decrease in log-likelihood at iteration ",iter))
 		
 		if (all(compare(trans, new_trans,tol))){
-			if (all(sapply(c(1:k), function(m) compareModels(models[[m]], new_models[[m]], tol)))){
+			if (all(sapply(c(1:k), function(m) compareModels(models[[m]], new_models[[m]], tol)), na.rm=T)){
 				converged <- TRUE
 			}
 		}
@@ -136,24 +138,38 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 #' @return a vector with a steady state distribution
 #'	@export
 getSteadyState <- function(trans){
-	etrans <- eigen(t(trans))
-	evalues <- etrans$values
-	for (i in seq_along(evalues)){
-		if (abs(1-evalues[i]) < 1e-12){
-			#eigenvalue has real part almost one and imaginary part almost 0, keep it
-			evalues[i] <- 1
-		} else {
-			#eigenvalue less than one (in modulus), it will disappear, 
-			#or with modulus one but complex, it will rotate all the time
-			#in the gauss circle and average to 0.
-			evalues[i] <- 0
+	#first try with diagonalization, 
+	#if it fails, exponentiate the trans matrix by a large number
+	etrans <- tryCatch(
+		eigen(t(trans)),
+		error=function(e) NULL)
+	
+	#ttrans2 ~ t(matpow(trans, Inf)) (it is transposed wrt trans)
+	if (!is.null(etrans)){
+		evalues <- etrans$values
+		for (i in seq_along(evalues)){
+			if (abs(1-evalues[i]) < 1e-12){
+				#eigenvalue has real part almost one and imaginary part almost 0, keep it
+				evalues[i] <- 1
+			} else {
+				#eigenvalue less than one (in modulus), it will disappear, 
+				#or with modulus one but complex, it will rotate all the time
+				#in the gauss circle and average to 0.
+				evalues[i] <- 0
+			}
 		}
+		ttrans2 <- etrans$vectors %*% diag(evalues) %*% solve(etrans$vectors)
+	} else {
+		#this is not very good when there are oscillatory behaviours...
+		t(ttrans2 <- matpow(trans, 2^20))
 	}
-	ttrans2 <- etrans$vectors %*% diag(evalues) %*% solve(etrans$vectors)
+	
 	
 	as.numeric(ttrans2 %*% rep(1/ncol(trans), ncol(trans)))
+	
 }
 
+#fast exponentiation algorithm
 matpow <- function(mat, pow){
 	if (pow==1){
 		mat

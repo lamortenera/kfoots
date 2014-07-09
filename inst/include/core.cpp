@@ -314,7 +314,6 @@ static void fitMultinoms_core(TMat<int> counts, Mat<double> posteriors, Mat<doub
 	}
 }
 
-
 /* EXPERIMENTAL LOG LIKELIHOOD ROUTINES 
 
 static inline double dotprod(int* v1, double* v2, int len){
