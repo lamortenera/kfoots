@@ -145,7 +145,7 @@ getSteadyState <- function(trans){
 		error=function(e) NULL)
 	
 	#ttrans2 ~ t(matpow(trans, Inf)) (it is transposed wrt trans)
-	if (!is.null(etrans)){
+	ttrans2 <- tryCatch({
 		evalues <- etrans$values
 		for (i in seq_along(evalues)){
 			if (abs(1-evalues[i]) < 1e-12){
@@ -158,12 +158,11 @@ getSteadyState <- function(trans){
 				evalues[i] <- 0
 			}
 		}
-		ttrans2 <- etrans$vectors %*% diag(evalues) %*% solve(etrans$vectors)
-	} else {
+		etrans$vectors %*% diag(evalues) %*% solve(etrans$vectors)
+		},error=function(e) {
 		#this is not very good when there are oscillatory behaviours...
-		t(ttrans2 <- matpow(trans, 2^20))
-	}
-	
+		t(matpow(trans, 2^20))
+	})
 	
 	as.numeric(ttrans2 %*% rep(1/ncol(trans), ncol(trans)))
 	

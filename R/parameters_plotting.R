@@ -212,17 +212,19 @@ plotHMM <- function(models, trans, widths=c(0.2,0.35,0.35,0.1)){
 	
 }
 
-plotHMM2 <- function(models, trans, widths=c(0.3,0.35,0.35), heights=c(0.1,0.9)){
+plotHMM2 <- function(models, trans, widths=c(0.3,0.35,0.35), heights=c(0.1,0.9), col=NULL){
 	os <- reorderMat(models)
 	models <- models[os$colIdx]
 	trans <- trans[os$colIdx, os$colIdx]
 	
 	if (is.null(names(models)))
-		names(models) <- paste0("cluster ", 1:length(models))
+		names(models) <- paste0("cluster ", os$colIdx)
 	
+	if (is.null(col)) {
+		library(RColorBrewer)
+		col <- brewer.pal(9, "Reds")
+	}
 	
-	library(fields)
-	col <- tim.colors(100)
 	mns <- getMeanMatrix(models)[,os$rowIdx]
 	nbs <- getNBs(models)
 	layout(matrix(c(1,2,3,4,5,6), nrow=2), widths=widths, heights=heights)
