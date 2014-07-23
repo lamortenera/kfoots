@@ -148,7 +148,7 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 		models = rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nthreads=nthreads)
 	}
 	if (nbtype=="pois") {
-		for (model in models) model$r <- Inf
+		for (i in seq_along(models)) models[[i]]$r <- Inf
 		nbtype <- "nofit"
 	}
 	if (is.null(mix_coeff)){
