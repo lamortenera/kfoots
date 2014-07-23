@@ -184,6 +184,10 @@ typedef IntegerVector::iterator iiter;
 //' @export
 // [[Rcpp::export]]
 List forward_backward(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, IntegerVector seqlens, NumericMatrix posteriors, int nthreads=1){
+	int nmod = initP.length();
+	double totlen = Rcpp::sum(seqlens);
+	if (nmod != trans.nrow() || nmod != trans.ncol() || nmod != lliks.nrow() || nmod != posteriors.nrow()) Rcpp::stop("Unable to figure out the number of models");
+	if (((double) lliks.ncol()) != totlen || ((double)posteriors.ncol()) != totlen) Rcpp::stop("Seqence lengths don't match with the provided matrices");
 	
 	NumericMatrix newTrans(trans.nrow(), trans.ncol());
 	double tot_llik = forward_backward_core(asVec(initP), asMat(trans), asMat(lliks), asVec(seqlens), asMat(posteriors), asMat(newTrans), nthreads);
@@ -205,6 +209,11 @@ List forward_backward(NumericVector initP, NumericMatrix trans, NumericMatrix ll
 //' @export
 // [[Rcpp::export]]
 List viterbi(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, NumericVector seqlens){
+	int nmod = initP.length();
+	double totlen = Rcpp::sum(seqlens);
+	if (nmod != trans.nrow() || nmod != trans.ncol() || nmod != lliks.nrow()) Rcpp::stop("Unable to figure out the number of models");
+	if (((double) lliks.ncol()) != totlen) Rcpp::stop("Seqence lengths don't match with the provided matrix");
+	
 	int k = initP.length();
 	int ncol = lliks.ncol();
 	NumericVector vpath(ncol);

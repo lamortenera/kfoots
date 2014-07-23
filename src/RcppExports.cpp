@@ -257,8 +257,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // fitModels
-Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads = 1);
-RcppExport SEXP kfoots_fitModels(SEXP countsSEXP, SEXP posteriorsSEXP, SEXP modelsSEXP, SEXP ucsSEXP, SEXP nthreadsSEXP) {
+Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, std::string type = "indep", int nthreads = 1);
+RcppExport SEXP kfoots_fitModels(SEXP countsSEXP, SEXP posteriorsSEXP, SEXP modelsSEXP, SEXP ucsSEXP, SEXP typeSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
@@ -267,8 +267,9 @@ BEGIN_RCPP
         Rcpp::traits::input_parameter< Rcpp::NumericVector >::type posteriors(posteriorsSEXP );
         Rcpp::traits::input_parameter< Rcpp::List >::type models(modelsSEXP );
         Rcpp::traits::input_parameter< Rcpp::List >::type ucs(ucsSEXP );
+        Rcpp::traits::input_parameter< std::string >::type type(typeSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        Rcpp::List __result = fitModels(counts, posteriors, models, ucs, nthreads);
+        Rcpp::List __result = fitModels(counts, posteriors, models, ucs, type, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);
@@ -276,8 +277,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // fitModelsGapMat
-Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads = 1);
-RcppExport SEXP kfoots_fitModelsGapMat(SEXP countsSEXP, SEXP posteriorsSEXP, SEXP modelsSEXP, SEXP ucsSEXP, SEXP nthreadsSEXP) {
+Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, std::string type = "indep", int nthreads = 1);
+RcppExport SEXP kfoots_fitModelsGapMat(SEXP countsSEXP, SEXP posteriorsSEXP, SEXP modelsSEXP, SEXP ucsSEXP, SEXP typeSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
@@ -286,8 +287,9 @@ BEGIN_RCPP
         Rcpp::traits::input_parameter< Rcpp::NumericVector >::type posteriors(posteriorsSEXP );
         Rcpp::traits::input_parameter< Rcpp::List >::type models(modelsSEXP );
         Rcpp::traits::input_parameter< Rcpp::List >::type ucs(ucsSEXP );
+        Rcpp::traits::input_parameter< std::string >::type type(typeSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        Rcpp::List __result = fitModelsGapMat(counts, posteriors, models, ucs, nthreads);
+        Rcpp::List __result = fitModelsGapMat(counts, posteriors, models, ucs, type, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);

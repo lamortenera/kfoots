@@ -94,6 +94,12 @@ kfoots_wrapper <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
 #' @param tol error tolerance used when checking whether the parameters have
 #' 	changed from one iteration to the next
 #' @param maxiter maximum number of iterations in the EM algorithm
+#' @param nbtype type of training for the negative binomial. Accepted types are:
+#' 	\code{indep}, \code{dep}, \code{pois}. The first type corresponds to standard
+#'.	maximum likelihood estimates for each parameter of each model, the second one
+#'.	forces the \code{r} dispersion parameters of the negative multinomials to be the same
+#' 	for all models, the third one forces \code{r} to be infinity, that is, every model
+#' 	will be a Poisson distribution. Default is \code{indep}.
 #' @param verbose print some output during execution
 #' @return a list with the parameters of the fitted model:
 #' 	\item{models}{a list containing the parameters of each model.
@@ -108,7 +114,7 @@ kfoots_wrapper <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
 #'		\item{llhistory}{time series containing the log-likelihood of the
 #'			whole dataset across iterations}
 #' @export
-kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=1, addnoise=FALSE, verbose=FALSE){
+kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=1, nbtype="indep", verbose=FALSE){
 	if (verbose)
 		cat("kfoots with ", nthreads, " threads\n")
 	if (!is.matrix(counts))
@@ -116,6 +122,7 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 	#this will ensure efficiency of certain methods.
 	#all floating point numbers will be "floored" (not rounded)
 	storage.mode(counts) <- "integer"
+	if (! nbtype %in% c("indep", "dep", "pois")) stop("nbtype must be one among 'indep', 'dep' and 'pois'")
 	
 	models <- NULL
 	if (!is.numeric(k)){
@@ -139,16 +146,15 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 		#get initial random models. Need to be kind-of similar to
 		#the count matrix, cannot be completely random
 		models = rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nthreads=nthreads)
-		if (addnoise){
-			#add a noise model
-			models[[1]]$tag <- "noise"
-			models[[1]]$ps <- rep(1/nrow(counts), nrow(counts))
-		}
+	}
+	if (nbtype=="pois") {
+		for (model in models) model$r <- Inf
+		nbtype <- "nofit"
 	}
 	if (is.null(mix_coeff)){
 		mix_coeff = rep(1/k, k)
 	}
-	
+
 	#allocating memory
 	posteriors <- matrix(0, nrow=k, ncol=nloci)
 	lliks <- matrix(0, nrow=k, ncol=nloci)
@@ -165,19 +171,9 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 		
 		if (verbose){
 			cat("Iteration: ", iter, ", log-likelihood: ", new_loglik, "\n")
-			
 		}
 		
-		new_models <- fitModels(counts, posteriors, models, ucs=ucs, nthreads=nthreads)
-				
-		if (addnoise){
-			new_models[[1]]$ps <- rep(1/footlen, footlen)
-		}
-
-		for (model in new_models){
-			if (any(model$ps < 0))
-				stop("something went wrong in fitting the multinomial...")
-		}
+		new_models <- fitModels(counts, posteriors, models, ucs=ucs, type=nbtype, nthreads=nthreads)
 		
 		
 		if(iter!=1 && new_loglik < loglik && !compare(new_loglik, loglik, tol))
@@ -255,11 +251,11 @@ getUniqueSeeds <- function(counts, k){
 	while (old_size < ncol(counts)){
 		#concatenate the old ones with the new ones
 		newcols <- shuffle[(old_size+1):size]
-		new_unique_cols <- newcols[uniqueColumns(counts[,newcols])]
+		new_unique_cols <- newcols[uniqueColumns(counts[,newcols, drop=FALSE])]
 		unique_cols <- c(unique_cols, new_unique_cols)
 		#check if there are duplicates (merge the two sets)
 		if (length(unique_cols)>1) 
-			unique_cols <- unique_cols[uniqueColumns(counts[,unique_cols])]
+			unique_cols <- unique_cols[uniqueColumns(counts[,unique_cols, drop=FALSE])]
 		
 		if (length(unique_cols)>=k)
 			return (unique_cols[1:k])
@@ -278,9 +274,9 @@ uniqueColumns <- function(counts){
 	#lexicographic sorting of the columns (loci)
 	o <- orderColumns(counts)
 	io <- (1:length(o))[o]
-	counts <- counts[,o]
+	counts <- counts[,o, drop=FALSE]
 	#identify runs of identical columns
-	d <- .colSums(abs(counts - counts[, c(1, 1:(nc-1))]), nr, nc)>0
+	d <- .colSums(abs(counts - counts[, c(1, 1:(nc-1)), drop=FALSE]), nr, nc)>0
 	d[1] <- TRUE
 	#get leading indexes positions
 	io[(1:nc)[d]]
@@ -363,6 +359,7 @@ compareModels <- function(m1, m2, tol){
 }
 
 compare <- function(c1, c2, tol){
+	if (length(c1)!=length(c2)) stop("cannot compare vectors of different length")
 	abs(c1-c2) <= tol*abs(c1+c2)
 }
 generateCol <- function(model){
@@ -487,4 +484,12 @@ lLik <- function(counts, model, ucs=NULL, multinom_const=NULL, nthreads=1){
 	lLikMat(counts, list(model), ucs, multinom_const, ans, nthreads)
 	
 	ans
+}
+
+
+fitModels_slow <- function(counts, posteriors, models, ucs, type="full"){
+	psmat <- counts %*% t(posteriors)
+	psmat <- apply(psmat, 2, function(v) v/sum(v))
+	
+	
 }

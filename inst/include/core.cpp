@@ -134,6 +134,7 @@ struct optimData {
 	int nthreads;
 };
 
+
 //optim fun for Brent
 static double fn1d(double logr, void* data){
 	optimData* info = (optimData*) data;
@@ -155,59 +156,149 @@ static double fn1d(double logr, void* data){
 	return -llik;
 }
 
+//data for optimization function 2.
+struct optimData2 {
+	Vec<int> counts;
+	Mat<double> posteriors;
+	Vec<double> mus;
+	int nthreads;
+};
+
+//optim fun for Brent , 1r function
+static double fn1d_2(double logr, void* data){
+	optimData2* info = (optimData2*) data;
+	Vec<double> mus = info->mus;
+	Mat<double> post = info->posteriors;
+	int* counts = info->counts.ptr;
+	int e = info->counts.len;
+	int nmod = post.nrow;
+	int nthreads = info->nthreads;
+	
+	double r = exp(logr);
+	
+	long double llik = 0;
+	#pragma omp parallel for schedule(static) reduction(+:llik) num_threads(nthreads)
+	for (int i = 0; i < e; ++i){
+		int c = counts[i];
+		double* postcol = post.colptr(i);
+		for (int mod = 0; mod < nmod; ++mod){
+			if (postcol[mod] > 0){
+				llik += lognbinom(c, mus[mod], r)*postcol[mod];
+			}
+		}
+	}
+	
+	return -llik;
+}
+
+static inline void meanAndVar(Vec<double> weights, Vec<int> counts, double* mean, double* var, double* wsum, int nthreads){
+	//get weighted averages
+	long double sum_c2p = 0;
+	long double sum_cp = 0;
+	long double sum_p = 0;
+	int* c = counts.ptr;
+	double* p = weights.ptr;
+	int len = counts.len;
+	#pragma omp parallel for reduction(+:sum_p,sum_cp,sum_c2p) num_threads(nthreads)
+	for (int i = 0; i < len; ++i){
+		double P = p[i], C = c[i];
+		sum_p += P;
+		sum_cp += P*C;
+		sum_c2p += P*C*C;
+	}
+	*wsum = sum_p;
+	*mean = sum_cp/sum_p;
+	*var = sum_c2p/sum_p - (*mean)*(*mean);
+}
+
+
+//make sure both values are finite and different from each other
+//takes the logarithm
+static void validateAndLogBraketing(double* initR, double* guessR, double tol){
+	//low sample variance -> poisson case
+	if (*guessR < 0 || !std::isfinite(*guessR)){ 
+		*guessR = DBL_MAX;
+	}
+	if (*initR < 0){
+		*initR = *guessR;
+	} else if (!std::isfinite(*initR)){
+		//this is just to avoid to work with infinities, 
+		//but it should give the same score as infinity
+		*initR = DBL_MAX; 
+	}
+	//optimization is done in the log space to avoid boundary constraints
+	*guessR = log(*guessR);
+	*initR = log(*initR);
+	//initial points too close to each other
+	if (fabs(*guessR - *initR) < tol*fabs(*guessR + *initR)/2){
+		*guessR = *initR*(1 - tol);
+	}
+}
+
+
+
 //you need the guarantee that the r that you get will be better or equal to initR
 //if initR is acceptable (not negative and not infinity) it must be one of the two
 //points used for brent
 static inline void fitNB_core(Vec<int> counts, Vec<double> posteriors, double* mu, double* r, double initR, int nthreads=1){
 	//tolerance
 	double tol=1e-8;
-	//get weighted average
-	long double sum_c2p = 0;
-	long double sum_cp = 0;
-	long double sum_p = 0;
-	int* c = counts.ptr;
-	double* p = posteriors.ptr;
-	for (int i = 0, e = counts.len; i < e; ++i, ++c, ++p){
-		double P = *p, C = *c;
-		sum_p += P; P *= C;
-		sum_cp += P;
-		sum_c2p += P*C;
-	}
-	*mu = sum_cp/sum_p;
-	
+	//get the variance of the data
+	double var, wsum;
+	meanAndVar(posteriors, counts, mu, &var, &wsum, 1);
 	//the r that matches the sample variance
-	double guessR = (*mu) * (*mu) / (sum_c2p/sum_p  -  *mu * (*mu + 1));
-	//low sample variance -> poisson case
-	if (guessR < 0 || !std::isfinite(guessR)){ 
-		guessR = DBL_MAX;
-	}
-	if (initR < 0){
-		initR = guessR;
-	} else if (!std::isfinite(initR)){
-		//this is just to avoid to work with infinities, 
-		//but it should give the same score as infinity
-		initR = DBL_MAX; 
-	}
-	
-	//optimization is done in the log space to avoid boundary constraints
-	guessR = log(guessR);
-	initR = log(initR);
-	//initial points too close to each other
-	if (fabs(guessR - initR) < tol*fabs(guessR + initR)/2){
-		guessR = initR*(1 - tol);
-	}
-	
+	double guessR = (*mu)*(*mu) / (var  -  (*mu));
+	validateAndLogBraketing(&initR, &guessR, tol);
 	
 	optimData info;
 	info.counts = counts;
 	info.posteriors = posteriors;
 	info.mu = *mu;
-	info.spost = sum_p;
+	info.spost = wsum;
 	info.nthreads = nthreads;
 	
 	initR = brent_wrapper(initR, guessR, fn1d, &info, tol);
 		
 	*r = exp(initR);
+}
+
+
+template<template <typename> class TVec>
+static inline void fitMeans_core(TVec<int> counts, Mat<double> posteriors, Vec<double> mus, int nthreads){
+	int ncol = posteriors.ncol;
+	int nmod = posteriors.nrow;
+	if (mus.len != nmod || ncol != counts.len){
+		throw std::invalid_argument("invalid parameters passed to fitNBs_core");
+	}
+	//fill the mus with zeros, just to be safe
+	for (int i = 0; i < nmod; ++i) mus[i] = 0;
+	std::vector<long double> tot_scp(nmod);
+	std::vector<long double> tot_sp(nmod);
+	
+	#pragma omp parallel num_threads(nthreads)
+	{
+		std::vector<long double> scp(nmod); long double* SCP = scp.data();
+		std::vector<long double> sp(nmod); long double* SP = sp.data();
+		#pragma omp for schedule(static) nowait
+		for (int i = 0; i < ncol; ++i){
+			double* post = posteriors.colptr(i);
+			int count = counts[i];
+			for (int j = 0; j < nmod; ++j){
+				SP[j] += post[j];
+				SCP[j] += count*post[j];
+			}
+		}
+		
+		#pragma omp critical
+		for (int j = 0; j < nmod; ++j){
+			tot_scp[j] += scp[j];
+			tot_sp[j] += sp[j];
+		}
+	}
+	
+	for (int j = 0; j < nmod; ++j){
+		mus[j] = tot_scp[j]/tot_sp[j];
+	}
 }
 
 
@@ -250,6 +341,58 @@ static inline void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<doub
 		fitNB_core(values, Vec<double>(tmpNBCol, tmpNB.nrow), &mus[mod], &rs[mod], rs[mod], nthreads_inner);
 	}
 }
+
+
+static inline void fitNBs_1r_core(Mat<double> posteriors, Vec<double> mus, double* r, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
+	int ncol = posteriors.ncol;
+	int nmod = posteriors.nrow;
+	if (mus.len != nmod || tmpNB.ncol*tmpNB.nrow != nmod*preproc.uniqueCS.len || ncol != preproc.map.len){
+		throw std::invalid_argument("invalid parameters passed to fitNBs_core");
+	}
+	Vec<int> map = preproc.map;
+	Vec<int> values = preproc.uniqueCS;
+	
+	//make sure that tmpNB here has the desired format 
+	tmpNB.ncol = values.len;
+	tmpNB.nrow = nmod;
+	memset(tmpNB.ptr, 0, values.len*nmod*sizeof(double));
+	
+	//collapse the posterior matrix (on the models, unfortunately)
+	#pragma omp parallel for num_threads(nthreads)
+	for (int mod = 0; mod < nmod; ++mod){
+		for (int col = 0; col < ncol; ++col){
+			tmpNB(mod, map[col]) += posteriors(mod, col);
+		}
+	}
+	//fit the means
+	fitMeans_core(values, tmpNB, mus, nthreads);
+	//fit R
+	//get some global posteriors (should be the same as the occurrences of each count)
+	std::vector<double> totPost(values.len);
+	colSums(tmpNB, asVec(totPost), nthreads);
+	//get the variance of the data
+	double mean, var, wsum;
+	meanAndVar(asVec(totPost), values, &mean, &var, &wsum, nthreads);
+	//get two initial points
+	//tolerance
+	double tol=1e-8;
+	//the initial r
+	double initR = *r;
+	//the r that matches the sample variance
+	double guessR = mean*mean / (var  -  mean);
+	validateAndLogBraketing(&initR, &guessR, tol);
+	
+	optimData2 info;
+	info.counts = values;
+	info.posteriors = tmpNB;
+	info.mus = mus;
+	info.nthreads = nthreads;
+	
+	initR = brent_wrapper(initR, guessR, fn1d_2, &info, tol);
+		
+	*r = exp(initR);
+}
+
 
 //ps matrix needs to be clean at the beginning
 template<template <typename> class TMat>

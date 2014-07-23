@@ -11,6 +11,12 @@
 #' @param tol error tolerance used when checking whether the parameters have
 #' 	changed from one iteration to the next
 #' @param maxiter maximum number of iterations in the EM algorithm
+#' @param nbtype type of training for the negative binomial. Accepted types are:
+#' 	\code{indep}, \code{dep}, \code{pois}. The first type corresponds to standard
+#'.	maximum likelihood estimates for each parameter of each model, the second one
+#'.	forces the \code{r} dispersion parameters of the negative multinomials to be the same
+#' 	for all models, the third one forces \code{r} to be infinity, that is, every model
+#' 	will be a Poisson distribution. Default is \code{indep}.
 #' @param verbose print some output during execution
 #' @param seqlens length of each run of adjacent datapoints
 #' @return a list with the parameters of the fitted model:
@@ -27,13 +33,14 @@
 #'			whole dataset across iterations}
 #'		\item{viterbi}{see output of \code{viterbi}}
 #' @export
-hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, verbose=FALSE, seqlens=ncol(counts), forcePoisson=FALSE){
+hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, nbtype="indep", verbose=FALSE, seqlens=ncol(counts)){
 	if (!is.matrix(counts))
 		stop("invalid counts variable provided. It must be a matrix")
 	#this will ensure efficiency of certain methods.
 	#all floating point numbers will be "floored" (not rounded)
 	storage.mode(counts) <- "integer"
-	
+	if (! nbtype %in% c("indep", "dep", "pois")) stop("nbtype must be one among 'indep', 'dep' and 'pois'")
+
 	
 	models <- NULL
 	if (!is.numeric(k)){
@@ -56,7 +63,10 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 		#get initial random models. Need to be kind-of similar to
 		#the count matrix, cannot be completely random
 		models = rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nthreads=nthreads)
-		if (forcePoisson) {for (i in seq_along(models)) {models[[i]]$r <- Inf}}
+	}
+	if (nbtype=="pois") {
+		for (i in seq_along(models)) models[[i]]$r <- Inf
+		nbtype <- "nofit"
 	}
 	if (is.na(trans)){
 		trans <- matrix(rep(1/k, k*k), ncol=k)
@@ -92,8 +102,7 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, v
 			cat("Iteration: ", iter, ", log-likelihood: ", new_loglik, "\n")
 		}
 		
-		new_models <- fitModels(counts, posteriors, models, ucs=ucs, nthreads=nthreads)
-		if (forcePoisson) {for (i in seq_along(models)) {new_models[[i]]$r <- Inf}}
+		new_models <- fitModels(counts, posteriors, models, ucs=ucs, type=nbtype, nthreads=nthreads)
 		
 		if(iter!=1 && new_loglik < loglik && !compare(new_loglik, loglik, tol))
 			warning(paste0("decrease in log-likelihood at iteration ",iter))

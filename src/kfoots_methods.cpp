@@ -75,6 +75,9 @@ static inline double llik2posteriors_core(Mat<double> lliks, Vec<double> mix_coe
 
 // [[Rcpp::export]]
 Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector mix_coeff, Rcpp::NumericMatrix posteriors, int nthreads=1){
+	if (lliks.nrow() != posteriors.nrow() || lliks.ncol() != posteriors.ncol()) Rcpp::stop("lliks and posteriors matrix don't have the same format!");
+	if (mix_coeff.length() != lliks.nrow()) Rcpp::stop("mix_coeff doens't match with the provided matrices");
+	
 	//copy the vector (I hope...)
 	Rcpp::NumericVector new_mix_coeff(mix_coeff);
 	
@@ -323,6 +326,7 @@ Rcpp::IntegerVector pwhichmax(Rcpp::NumericMatrix posteriors, int nthreads=1){
 
 // [[Rcpp::export]]
 Rcpp::List fitNB_inner(Rcpp::IntegerVector counts, Rcpp::NumericVector posteriors, double initR=-1){
+	if (counts.length() != posteriors.length()) Rcpp::stop("counts and posteriors don't match");
 	double mu = -1;
 	double r = -1;
 	fitNB_core(asVec(counts), asVec(posteriors), &mu, &r, initR);
@@ -332,7 +336,7 @@ Rcpp::List fitNB_inner(Rcpp::IntegerVector counts, Rcpp::NumericVector posterior
 
 
 template<template <typename> class TMat>
-inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
+inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, std::string type="indep", int nthreads=1){
 	int nmodels = models.length();
 	int footlen = counts.nrow;
 	
@@ -360,19 +364,30 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteri
 	//allocating some temporary memory
 	std::vector<double> tmpNB(uniqueCS.length()*nmodels);
 	
-	fitNBs_core(postMat, mus, rs, preproc, asMat(tmpNB, nmodels), nthreads);
+	if (type=="indep"){//independent negative binomials, fit both mu and r
+		fitNBs_core(postMat, mus, rs, preproc, asMat(tmpNB, nmodels), nthreads);
+	} else if (type=="nofit"){//leave r unchanged and fit only mu
+		//inverse transformation: the column sums from the unique column sums
+		GapVec<int> colsums(uniqueCS.begin(), map.begin(), map.length());
+		//fit only the mus
+		fitMeans_core(colsums, postMat, mus, nthreads);
+	} else if (type=="dep"){//constrain the NBs to have the same r
+		double r = rs[0];
+		fitNBs_1r_core(postMat, mus, &r, preproc, asMat(tmpNB, nmodels), nthreads);
+		for (int i = 0; i < nmodels; ++i){ rs[i] = r; }
+	} else Rcpp::stop("Invalid fitting method provided: must be one among 'indep', 'nofit' and 'dep'.");
 	fitMultinoms_core(counts, postMat, ps, nthreads);
 	return writeModels(mus, rs, ps);
 }
 
 // [[Rcpp::export]]
-Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
-	return fitModels_helper(asMat(counts), posteriors, models, ucs, nthreads);
+Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, std::string type="indep", int nthreads=1){
+	return fitModels_helper(asMat(counts), posteriors, models, ucs, type, nthreads);
 }
 
 // [[Rcpp::export]]
-Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, int nthreads=1){
-	return fitModels_helper(asGapMat<int>(counts), posteriors, models, ucs, nthreads);
+Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, std::string type="indep", int nthreads=1){
+	return fitModels_helper(asGapMat<int>(counts), posteriors, models, ucs, type, nthreads);
 }
 
 /*
