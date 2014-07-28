@@ -296,3 +296,18 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
+// tabFast
+Rcpp::IntegerVector tabFast(Rcpp::IntegerVector counts);
+RcppExport SEXP kfoots_tabFast(SEXP countsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type counts(countsSEXP );
+        Rcpp::IntegerVector __result = tabFast(counts);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}

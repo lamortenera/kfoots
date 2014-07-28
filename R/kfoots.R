@@ -114,7 +114,7 @@ kfoots_wrapper <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
 #'		\item{llhistory}{time series containing the log-likelihood of the
 #'			whole dataset across iterations}
 #' @export
-kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=1, nbtype="indep", verbose=FALSE){
+kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=1, nbtype="indep", init="rnd", verbose=FALSE){
 	if (verbose)
 		cat("kfoots with ", nthreads, " threads\n")
 	if (!is.matrix(counts))
@@ -123,6 +123,7 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 	#all floating point numbers will be "floored" (not rounded)
 	storage.mode(counts) <- "integer"
 	if (! nbtype %in% c("indep", "dep", "pois")) stop("nbtype must be one among 'indep', 'dep' and 'pois'")
+	if (! init %in% c("rnd", "totcount")) stop("init must by one among 'rnd' and 'totcount'")
 	
 	models <- NULL
 	if (!is.numeric(k)){
@@ -145,11 +146,11 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 	if (is.null(models)){
 		#get initial random models. Need to be kind-of similar to
 		#the count matrix, cannot be completely random
-		models = rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nthreads=nthreads)
-	}
-	if (nbtype=="pois") {
-		for (i in seq_along(models)) models[[i]]$r <- Inf
-		nbtype <- "nofit"
+		if (init=="rnd"){
+			models <- rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
+		} else {
+			models <- initByTotCount(counts, k, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
+		}
 	}
 	if (is.null(mix_coeff)){
 		mix_coeff = rep(1/k, k)
@@ -211,14 +212,52 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 
 
 #to be parallelized, or avoid iteration through the whole matrix
-rndModels <- function(counts, k, bgr_prior=0.5, ucs=NULL, nthreads=1){
+initByTotCount <- function(counts, k, ucs=NULL, nbtype="indep", nthreads=1){
+	cs <- colSumsInt(counts, nthreads)
+	#the basic idea is to divide the counts into quantiles and to set each cluster to a different quantile
+	#but we want to detect the "zero-inflated" component, if present, and set it to a cluster
+	#it is present if the abundance of 'zeros' is higher than the abundance of 'ones'
+	#if this is the case, one cluster will consist of only zeros and ones
+	tab <- tabFast(cs)#abundance of each count
+	if (length(tab) > 2 && tab[1] > tab[2] && (length(cs) - sum(tab[1:2]) > k-1)) {
+		p1 <- sum(tab[1:2])/length(cs) #portion of counts corresponding to the 'zero-inflated' mode
+	} else {
+		p1 <- 1/k
+	}
+	ps <- c(p1, rep((1-p1)/(k-1), k-1))
+	qs <- cumsum(c(0, ps))
+	#perturb cs to resolve ties 
+	set.seed(17)
+	cs <- cs + rnorm(length(cs), sd=0.001)
+	#get thresholds
+	thresh <- quantile(cs, qs)
+	#get cluster assignments
+	thresh[length(thresh)] <- thresh[length(thresh)] + 1 #to include rightmost point in the last cluster
+	f <- as.integer(cut(cs, thresh, right=F))
+	#check that there is at least one datapoint for each cluster
+	check <- tabFast(f)
+	if (any(check[2:length(check)] == 0)) stop("initialization by total count failed (too few columns? too many models?)")
+	
+	#get posteriors
+	posteriors <- matrix(0, nrow=k, ncol=length(cs))
+	posteriors[k*(0:(length(cs)-1)) + f] <- 1
+	
+	models <- list()
+	for (i in 1:k){ models[[i]] <- list(mu=-1, r=-1, ps=numeric(nrow(counts))) }
+	
+	fitModels(counts, posteriors, models, ucs=ucs, type=nbtype, nthreads=nthreads)
+}
+
+
+#to be parallelized, or avoid iteration through the whole matrix
+rndModels <- function(counts, k, bgr_prior=0.5, ucs=NULL, nbtype="indep", nthreads=1){
 	seeds <- getUniqueSeeds(counts, k)
-	modelsFromSeeds(counts, seeds, bgr_prior=bgr_prior, ucs=ucs, nthreads=nthreads)
+	modelsFromSeeds(counts, seeds, bgr_prior=bgr_prior, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
 }
 
 #seeds are columns of the count matrix which are guaranteed to be distinct.
 #they are used to initialize the models
-modelsFromSeeds <- function(counts, seeds, bgr_prior=0.5, ucs=NULL, nthreads=1){
+modelsFromSeeds <- function(counts, seeds, bgr_prior=0.5, ucs=NULL, nbtype="indep", nthreads=1){
 	
 	posteriors <- matrix(nrow=length(seeds), ncol=ncol(counts), bgr_prior)
 	#perturb row i at column seeds[i]
@@ -229,9 +268,7 @@ modelsFromSeeds <- function(counts, seeds, bgr_prior=0.5, ucs=NULL, nthreads=1){
 	models <- list()
 	for (i in seq_along(seeds)){ models[[i]] <- list(mu=-1, r=-1, ps=numeric(nrow(counts))) }
 	
-	#get fitted models
-	
-	fitModels(counts, posteriors, models, ucs=ucs, nthreads=nthreads)
+	fitModels(counts, posteriors, models, ucs=ucs, type=nbtype, nthreads=nthreads)
 }
 
 #find k unique seeds as fast as possible given that "counts" could be huge.
@@ -360,8 +397,9 @@ compareModels <- function(m1, m2, tol){
 
 compare <- function(c1, c2, tol){
 	if (length(c1)!=length(c2)) stop("cannot compare vectors of different length")
-	abs(c1-c2) <= tol*abs(c1+c2)
+	(abs(c1-c2) <= tol*abs(c1+c2)) | (is.infinite(c1) & is.infinite(c2))
 }
+
 generateCol <- function(model){
 	rmultinom(1, rnbinom(1, mu=model$mu, size=model$r), prob=model$ps)
 }

@@ -108,3 +108,7 @@ fitModelsGapMat <- function(counts, posteriors, models, ucs, type = "indep", nth
     .Call('kfoots_fitModelsGapMat', PACKAGE = 'kfoots', counts, posteriors, models, ucs, type, nthreads)
 }
 
+tabFast <- function(counts) {
+    .Call('kfoots_tabFast', PACKAGE = 'kfoots', counts)
+}
+

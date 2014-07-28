@@ -33,14 +33,14 @@
 #'			whole dataset across iterations}
 #'		\item{viterbi}{see output of \code{viterbi}}
 #' @export
-hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, nbtype="indep", verbose=FALSE, seqlens=ncol(counts)){
+hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, nbtype="indep", init="rnd", verbose=FALSE, seqlens=ncol(counts)){
 	if (!is.matrix(counts))
 		stop("invalid counts variable provided. It must be a matrix")
 	#this will ensure efficiency of certain methods.
 	#all floating point numbers will be "floored" (not rounded)
 	storage.mode(counts) <- "integer"
 	if (! nbtype %in% c("indep", "dep", "pois")) stop("nbtype must be one among 'indep', 'dep' and 'pois'")
-
+	if (! init %in% c("rnd", "totcount")) stop("init must by one among 'rnd' and 'totcount'")
 	
 	models <- NULL
 	if (!is.numeric(k)){
@@ -62,11 +62,11 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, n
 	if (is.null(models)){
 		#get initial random models. Need to be kind-of similar to
 		#the count matrix, cannot be completely random
-		models = rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nthreads=nthreads)
-	}
-	if (nbtype=="pois") {
-		for (i in seq_along(models)) models[[i]]$r <- Inf
-		nbtype <- "nofit"
+		if (init=="rnd"){
+			models <- rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
+		} else {
+			models <- initByTotCount(counts, k, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
+		}
 	}
 	if (is.na(trans)){
 		trans <- matrix(rep(1/k, k*k), ncol=k)
@@ -108,7 +108,7 @@ hmmfoots <- function(counts, k, trans=NA, tol = 1e-8, maxiter=100, nthreads=1, n
 			warning(paste0("decrease in log-likelihood at iteration ",iter))
 		
 		if (all(compare(trans, new_trans,tol))){
-			if (all(sapply(c(1:k), function(m) compareModels(models[[m]], new_models[[m]], tol)), na.rm=T)){
+			if (all(sapply(c(1:k), function(m) compareModels(models[[m]], new_models[[m]], tol)))){
 				converged <- TRUE
 			}
 		}

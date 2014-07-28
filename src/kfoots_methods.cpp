@@ -366,11 +366,14 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteri
 	
 	if (type=="indep"){//independent negative binomials, fit both mu and r
 		fitNBs_core(postMat, mus, rs, preproc, asMat(tmpNB, nmodels), nthreads);
-	} else if (type=="nofit"){//leave r unchanged and fit only mu
+	} else if (type=="nofit" || type=="pois"){
+		//fit only the mus
+		//if pois is selected, set r to Inf
 		//inverse transformation: the column sums from the unique column sums
 		GapVec<int> colsums(uniqueCS.begin(), map.begin(), map.length());
 		//fit only the mus
 		fitMeans_core(colsums, postMat, mus, nthreads);
+		if (type=="pois"){ for (int i = 0; i < nmodels; ++i) {rs[i] = INFINITY; } }
 	} else if (type=="dep"){//constrain the NBs to have the same r
 		double r = rs[0];
 		fitNBs_1r_core(postMat, mus, &r, preproc, asMat(tmpNB, nmodels), nthreads);
@@ -379,6 +382,8 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteri
 	fitMultinoms_core(counts, postMat, ps, nthreads);
 	return writeModels(mus, rs, ps);
 }
+
+
 
 // [[Rcpp::export]]
 Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, std::string type="indep", int nthreads=1){
@@ -389,6 +394,19 @@ Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors,
 Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, std::string type="indep", int nthreads=1){
 	return fitModels_helper(asGapMat<int>(counts), posteriors, models, ucs, type, nthreads);
 }
+
+
+// [[Rcpp::export]]
+Rcpp::IntegerVector tabFast(Rcpp::IntegerVector counts){
+	int min = Rcpp::min(counts);
+	int max = Rcpp::max(counts);
+	if (min < 0) Rcpp::stop("The 'counts' vector must contain only positive numbers");
+	Rcpp::IntegerVector tab(max+1);
+	int* C = counts.begin(); int* T = tab.begin();
+	for (int i = 0, e = counts.length(); i < e; ++i) ++T[C[i]];
+	return tab;
+}
+
 
 /*
 // [[Rcpp::export]]
