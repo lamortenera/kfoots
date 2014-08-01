@@ -378,7 +378,7 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteri
 		double r = rs[0];
 		fitNBs_1r_core(postMat, mus, &r, preproc, asMat(tmpNB, nmodels), nthreads);
 		for (int i = 0; i < nmodels; ++i){ rs[i] = r; }
-	} else Rcpp::stop("Invalid fitting method provided: must be one among 'indep', 'nofit' and 'dep'.");
+	} else Rcpp::stop("Invalid fitting method provided: must be one among 'indep', 'nofit', 'pois' and 'dep'.");
 	fitMultinoms_core(counts, postMat, ps, nthreads);
 	return writeModels(mus, rs, ps);
 }

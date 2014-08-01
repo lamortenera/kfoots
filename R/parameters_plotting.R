@@ -212,7 +212,7 @@ plotHMM <- function(models, trans, widths=c(0.2,0.35,0.35,0.1)){
 	
 }
 
-plotHMM2 <- function(models, trans, widths=c(0.3,0.35,0.35), heights=c(0.1,0.9), col=NULL){
+plotHMM2 <- function(models, trans, widths=c(0.3,0.35,0.35), heights=c(0.1,0.9), rel=FALSE, col=NULL){
 	os <- reorderMat(models)
 	models <- models[os$colIdx]
 	trans <- trans[os$colIdx, os$colIdx]
@@ -226,6 +226,8 @@ plotHMM2 <- function(models, trans, widths=c(0.3,0.35,0.35), heights=c(0.1,0.9),
 	}
 	
 	mns <- getMeanMatrix(models)[,os$rowIdx]
+	if (rel) mns <- prop.table(mns, 1)
+	
 	nbs <- getNBs(models)
 	layout(matrix(c(1,2,3,4,5,6), nrow=2), widths=widths, heights=heights)
 	
@@ -251,7 +253,8 @@ plotHMM2 <- function(models, trans, widths=c(0.3,0.35,0.35), heights=c(0.1,0.9),
 	#Means matrix color key
 	mnsrange <- range(mns)
 	par(mar=c(colkeylowmar,lmar,umar,rmar))
-	plotColorKey(mnsrange, col=col, n=64, side=1, main="Mean counts", lab=NULL)
+	main <- ifelse(rel, "Count ratios", "Mean counts")
+	plotColorKey(mnsrange, col=col, n=64, side=1, main=main, lab=NULL)
 	
 	#Means matrix
 	par(mar=c(hmodlabelmar,lmar,middlemar,rmar), las=2)

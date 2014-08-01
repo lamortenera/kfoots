@@ -58,6 +58,39 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
+// labelCounts
+Rcpp::IntegerVector labelCounts(Rcpp::NumericVector empirical, Rcpp::NumericVector theoretical);
+RcppExport SEXP kfoots_labelCounts(SEXP empiricalSEXP, SEXP theoreticalSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type empirical(empiricalSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericVector >::type theoretical(theoreticalSEXP );
+        Rcpp::IntegerVector __result = labelCounts(empirical, theoretical);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// clusterAverages
+Rcpp::List clusterAverages(Rcpp::IntegerMatrix counts, Rcpp::List clusters, int nthreads);
+RcppExport SEXP kfoots_clusterAverages(SEXP countsSEXP, SEXP clustersSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::List >::type clusters(clustersSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::List __result = clusterAverages(counts, clusters, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
 // llik2posteriors
 Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector mix_coeff, Rcpp::NumericMatrix posteriors, int nthreads = 1);
 RcppExport SEXP kfoots_llik2posteriors(SEXP lliksSEXP, SEXP mix_coeffSEXP, SEXP posteriorsSEXP, SEXP nthreadsSEXP) {

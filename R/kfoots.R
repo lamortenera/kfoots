@@ -123,7 +123,7 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 	#all floating point numbers will be "floored" (not rounded)
 	storage.mode(counts) <- "integer"
 	if (! nbtype %in% c("indep", "dep", "pois")) stop("nbtype must be one among 'indep', 'dep' and 'pois'")
-	if (! init %in% c("rnd", "totcount")) stop("init must by one among 'rnd' and 'totcount'")
+	if (! init %in% c("rnd", "totcount", "cool")) stop("init must by one among 'rnd', 'totcount' and 'cool'")
 	
 	models <- NULL
 	if (!is.numeric(k)){
@@ -148,6 +148,10 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 		#the count matrix, cannot be completely random
 		if (init=="rnd"){
 			models <- rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
+		} else if (init=="cool"){
+			init <- initCool(counts, k, nbtype=nbtype, nthreads=nthreads)
+			models <- init$models
+			if (is.null(mix_coeff)) mix_coeff <- init$mix_coeff
 		} else {
 			models <- initByTotCount(counts, k, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
 		}

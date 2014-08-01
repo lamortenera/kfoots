@@ -44,6 +44,14 @@ orderColumns <- function(mat) {
     .Call('kfoots_orderColumns', PACKAGE = 'kfoots', mat)
 }
 
+labelCounts <- function(empirical, theoretical) {
+    .Call('kfoots_labelCounts', PACKAGE = 'kfoots', empirical, theoretical)
+}
+
+clusterAverages <- function(counts, clusters, nthreads) {
+    .Call('kfoots_clusterAverages', PACKAGE = 'kfoots', counts, clusters, nthreads)
+}
+
 llik2posteriors <- function(lliks, mix_coeff, posteriors, nthreads = 1L) {
     .Call('kfoots_llik2posteriors', PACKAGE = 'kfoots', lliks, mix_coeff, posteriors, nthreads)
 }
