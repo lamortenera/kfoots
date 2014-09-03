@@ -114,16 +114,18 @@ kfoots_wrapper <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
 #'		\item{llhistory}{time series containing the log-likelihood of the
 #'			whole dataset across iterations}
 #' @export
-kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=1, nbtype="indep", init="rnd", verbose=FALSE){
+kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=1,
+	nbtype=c("indep","dep","pois"), init=c("rnd","totcount","cool","pca"), init.nlev=5, verbose=FALSE){
 	if (verbose)
 		cat("kfoots with ", nthreads, " threads\n")
+	
 	if (!is.matrix(counts))
 		stop("invalid counts variable provided. It must be a matrix")
 	#this will ensure efficiency of certain methods.
 	#all floating point numbers will be "floored" (not rounded)
 	storage.mode(counts) <- "integer"
-	if (! nbtype %in% c("indep", "dep", "pois")) stop("nbtype must be one among 'indep', 'dep' and 'pois'")
-	if (! init %in% c("rnd", "totcount", "cool")) stop("init must by one among 'rnd', 'totcount' and 'cool'")
+	nbtype <- match.arg(nbtype)
+	init <- match.arg(init)
 	
 	models <- NULL
 	if (!is.numeric(k)){
@@ -148,10 +150,10 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 		#the count matrix, cannot be completely random
 		if (init=="rnd"){
 			models <- rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
-		} else if (init=="cool"){
-			init <- initCool(counts, k, nbtype=nbtype, nthreads=nthreads)
+		} else if (init=="cool" || init=="pca"){
+			init <- initCool(counts, k, nlev=init.nlev, nbtype=nbtype, nthreads=nthreads, axes=ifelse(init=="pca","pca","counts"), verbose=verbose)
 			models <- init$models
-			if (is.null(mix_coeff)) mix_coeff <- init$mix_coeff
+			if (is.null(trans)) trans <- t(sapply(1:k, function(i) init$mix_coeff))
 		} else {
 			models <- initByTotCount(counts, k, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
 		}
@@ -207,7 +209,6 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 	}
 	
 	#same as: clusters <- apply(posteriors, 2, which.max)
-	#parallelization is probably overkill for this function...
 	clusters <- pwhichmax(posteriors, nthreads=nthreads)
 	
 	list(models=models, mix_coeff=mix_coeff, loglik = loglik,

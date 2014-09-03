@@ -44,12 +44,52 @@ orderColumns <- function(mat) {
     .Call('kfoots_orderColumns', PACKAGE = 'kfoots', mat)
 }
 
+tabFast <- function(counts) {
+    .Call('kfoots_tabFast', PACKAGE = 'kfoots', counts)
+}
+
+tabCols <- function(counts, nthreads = 1L) {
+    .Call('kfoots_tabCols', PACKAGE = 'kfoots', counts, nthreads)
+}
+
+tabRows <- function(counts, nthreads = 1L) {
+    .Call('kfoots_tabRows', PACKAGE = 'kfoots', counts, nthreads)
+}
+
 labelCounts <- function(empirical, theoretical) {
     .Call('kfoots_labelCounts', PACKAGE = 'kfoots', empirical, theoretical)
 }
 
-clusterAverages <- function(counts, clusters, nthreads) {
+clusterAverages2 <- function(counts, coords, clusters, nthreads = 1L) {
+    .Call('kfoots_clusterAverages2', PACKAGE = 'kfoots', counts, coords, clusters, nthreads)
+}
+
+clusterAverages <- function(counts, clusters, nthreads = 1L) {
     .Call('kfoots_clusterAverages', PACKAGE = 'kfoots', counts, clusters, nthreads)
+}
+
+fillPosteriors <- function(coords, clusters, posteriors, nthreads = 1L) {
+    invisible(.Call('kfoots_fillPosteriors', PACKAGE = 'kfoots', coords, clusters, posteriors, nthreads))
+}
+
+rowcov <- function(counts, besselCorr = TRUE, nthreads = 1L) {
+    .Call('kfoots_rowcov', PACKAGE = 'kfoots', counts, besselCorr, nthreads)
+}
+
+matprod <- function(mat1, mat2, mat3, nthreads = 1L) {
+    invisible(.Call('kfoots_matprod', PACKAGE = 'kfoots', mat1, mat2, mat3, nthreads))
+}
+
+discretizeRows <- function(scores, nlevels, nthreads = 1L) {
+    .Call('kfoots_discretizeRows', PACKAGE = 'kfoots', scores, nlevels, nthreads)
+}
+
+splitAxes <- function(scores, nsplit, nthreads = 1L) {
+    .Call('kfoots_splitAxes', PACKAGE = 'kfoots', scores, nsplit, nthreads)
+}
+
+splitAxesInt <- function(scores, nsplit, nthreads = 1L) {
+    .Call('kfoots_splitAxesInt', PACKAGE = 'kfoots', scores, nsplit, nthreads)
 }
 
 llik2posteriors <- function(lliks, mix_coeff, posteriors, nthreads = 1L) {
@@ -114,9 +154,5 @@ fitModels <- function(counts, posteriors, models, ucs, type = "indep", nthreads 
 
 fitModelsGapMat <- function(counts, posteriors, models, ucs, type = "indep", nthreads = 1L) {
     .Call('kfoots_fitModelsGapMat', PACKAGE = 'kfoots', counts, posteriors, models, ucs, type, nthreads)
-}
-
-tabFast <- function(counts) {
-    .Call('kfoots_tabFast', PACKAGE = 'kfoots', counts)
 }
 

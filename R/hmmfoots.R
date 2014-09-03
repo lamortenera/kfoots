@@ -33,14 +33,15 @@
 #'			whole dataset across iterations}
 #'		\item{viterbi}{see output of \code{viterbi}}
 #' @export
-hmmfoots <- function(counts, k, trans=NULL, tol = 1e-8, maxiter=100, nthreads=1, nbtype="indep", init="rnd", verbose=FALSE, seqlens=ncol(counts)){
+hmmfoots <- function(counts, k, trans=NULL, tol = 1e-8, maxiter=100, nthreads=1,
+	nbtype=c("indep","dep","pois"), init=c("rnd","totcount","cool","pca"), init.nlev=5, verbose=FALSE, seqlens=ncol(counts)){
 	if (!is.matrix(counts))
 		stop("invalid counts variable provided. It must be a matrix")
 	#this will ensure efficiency of certain methods.
 	#all floating point numbers will be "floored" (not rounded)
 	storage.mode(counts) <- "integer"
-	if (! nbtype %in% c("indep", "dep", "pois")) stop("nbtype must be one among 'indep', 'dep' and 'pois'")
-	if (! init %in% c("rnd", "totcount", "cool")) stop("init must by one among 'rnd', 'totcount' and 'cool'")
+	nbtype <- match.arg(nbtype)
+	init <- match.arg(init)
 	
 	models <- NULL
 	if (!is.numeric(k)){
@@ -64,8 +65,8 @@ hmmfoots <- function(counts, k, trans=NULL, tol = 1e-8, maxiter=100, nthreads=1,
 		#the count matrix, cannot be completely random
 		if (init=="rnd"){
 			models <- rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
-		} else if (init=="cool"){
-			init <- initCool(counts, k, nbtype=nbtype, nthreads=nthreads)
+		} else if (init=="cool" || init=="pca"){
+			init <- initCool(counts, k, nlev=init.nlev, nbtype=nbtype, nthreads=nthreads, axes=ifelse(init=="pca","pca","counts"), verbose=verbose)
 			models <- init$models
 			if (is.null(trans)) trans <- t(sapply(1:k, function(i) init$mix_coeff))
 		} else {
@@ -134,9 +135,11 @@ hmmfoots <- function(counts, k, trans=NULL, tol = 1e-8, maxiter=100, nthreads=1,
 		names(models[[i]]$ps) <- rownames(counts)
 	}
 	
+	#same as: clusters <- apply(posteriors, 2, which.max)
+	clusters <- pwhichmax(posteriors, nthreads=nthreads)
 	
 	list(models=models, trans=new_trans, loglik = loglik,
-	posteriors=posteriors, converged = converged, llhistory=llhistory[1:iter],
+	posteriors=posteriors, clusters=clusters, converged = converged, llhistory=llhistory[1:iter],
 	viterbi=viterbi_path)
 	
 	

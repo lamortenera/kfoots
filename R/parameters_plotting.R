@@ -1,3 +1,30 @@
+myColors <- function(n, type="blue"){
+	if (type=="blue"){
+		start <- c(247,251,255)
+		middle <- c(107,174,214)
+		end <- c(8,48,107)
+	} else if (type=="red"){
+		start <- c(255,245,240)
+		middle <- c(251,106,74)
+		end <- c(103,0,13)
+	} else if (type=="yellow-blue"){
+		start <- c(255,255,217)
+		middle <- c(65,182,196)
+		end <- c(8,29,88)
+	} else if (type=="green"){
+		start <- c(255,255,217)
+		middle <- c(120,198,121)
+		end <- c(0,69,41)
+	} else if (type=="red2"){
+		start <- c(255,247,236)
+		middle <- c(252,141,89)
+		end <- c(127,0,0)
+	}
+	ps <- seq(0, 1, length.out=n)
+	rgb(colorRamp(rgb(rbind(start, middle, end),  max=255))(ps), max=255)
+}
+
+
 plotMatrix <- function(mat, xticks=colnames(mat), yticks=rownames(mat), zlim=range(mat, na.rm=TRUE), col=heat.colors(12), sides=c(1,2),...){
 	image(t(mat[nrow(mat):1,]), zlim=zlim, col=col, xaxt="n", yaxt="n",...)
 	
@@ -88,7 +115,7 @@ plotNBs <- function(nbs, eps=0.2, xlab="count",...){
 	spacer <- 1/(2*(ncol(nbs)-1))
 	ylim <- c(0-spacer,1+spacer)
 	par(yaxs="i")
-	plot(NULL, xlim=xlim, ylim=ylim, yaxt="n", ylab=NA, xlab=xlab, ...)
+	plot(NULL, xlim=xlim, ylim=ylim, yaxt="n", xlab=xlab, ...)
 	axis(side=2, tick=F, at=ys, labels=colnames(nbs))
 	X <- as.numeric(rbind(xs-sds, xs+sds, NA))
 	Y <- as.numeric(rbind(ys, ys, NA))
@@ -109,22 +136,18 @@ plotModels <- function(models, mix_coeff, widths=c(0.2,0.5,0.2,0.1)){
 	if (is.null(names(models)))
 		names(models) <- paste0("cluster ", 1:length(models))
 	
-	
-	
 	ps <- getPS(models)[os$rowIdx,]
 	nbs <- getNBs(models)
 	layout(matrix(c(1,2,3,4), nrow=1), widths=widths)
 	par(mar=c(5,4,4,1))
 	plotNBs(nbs, main="mean and sd", xlab="tot read count")
-	library(fields)
-	col <- tim.colors(100)
+	col <- myColors(100)
 	par(mar=c(5,1,4,1), las=2)
 	plotMatrix(t(ps), main="multinomial ps", yticks=NA, col=col)
 	par(mar=c(5,1,4,1))
 	plotMatrix(as.matrix(mix_coeff), main="mix. coeff.", zlim=c(0,1), yticks=NA, xticks=NA, col=col)
 	par(mar=c(5,1,4,3.5), las=0)
 	plotColorKey(c(0,1), col=col, n=64)
-	
 }
 
 
@@ -137,8 +160,7 @@ plotModels2 <- function(models, mix_coeff, widths=c(0.3,0.5,0.2), heights=c(0.1,
 		names(models) <- paste0("cluster ", 1:length(models))
 	
 	
-	library(fields)
-	col <- tim.colors(100)
+	col <- myColors(100)
 	mns <- getMeanMatrix(models)[,os$rowIdx]
 	nbs <- getNBs(models)
 	layout(matrix(c(1,2,3,4,5,6), nrow=2), widths=widths, heights=heights)
@@ -189,7 +211,7 @@ plotHMM <- function(models, trans, widths=c(0.2,0.35,0.35,0.1)){
 	
 	
 	if (is.null(names(models)))
-		names(models) <- paste0("cluster ", 1:length(models))
+		names(models) <- paste0("state ", 1:length(models))
 	
 	
 	rownames(trans) <- names(models)
@@ -198,8 +220,7 @@ plotHMM <- function(models, trans, widths=c(0.2,0.35,0.35,0.1)){
 	nbs <- getNBs(models)
 	lmar = 5
 	umar = 4
-	library(fields)
-	col <- tim.colors(100)
+	col <- myColors(100)
 	layout(matrix(c(1,2,3,4), nrow=1), widths=widths)
 	par(mar=c(lmar,4,umar,1))
 	plotNBs(nbs, main="mean and sd", xlab="tot read count")
@@ -218,12 +239,9 @@ plotHMM2 <- function(models, trans, widths=c(0.3,0.35,0.35), heights=c(0.1,0.9),
 	trans <- trans[os$colIdx, os$colIdx]
 	
 	if (is.null(names(models)))
-		names(models) <- paste0("cluster ", os$colIdx)
+		names(models) <- paste0("state ", os$colIdx)
 	
-	if (is.null(col)) {
-		library(RColorBrewer)
-		col <- brewer.pal(9, "Reds")
-	}
+	if (is.null(col)) col <- myColors(100)
 	
 	mns <- getMeanMatrix(models)[,os$rowIdx]
 	if (rel) mns <- prop.table(mns, 1)
@@ -272,7 +290,7 @@ plotHMM2 <- function(models, trans, widths=c(0.3,0.35,0.35), heights=c(0.1,0.9),
 }
 
 plotModels_old <- function(models, xnames=NA, dendro="both", norm=T,
-	Rowv=TRUE, Colv=TRUE, trace="none", col=tim.colors(), mar=c(5,9),...){
+	Rowv=TRUE, Colv=TRUE, trace="none", col=myColors(100), mar=c(5,9),...){
 	source("/home/wwwcmb/epigen/htdocs/scripts/kmtools.R")
 	mat <- getMeanMatrix(models)
 	if (is.null(names(models))){
@@ -293,8 +311,6 @@ plotModels_old <- function(models, xnames=NA, dendro="both", norm=T,
 		rownames(mat)[1] <- "Tot"
 	}
 	
-	library(gplots)
-	library(fields)
 	heatmap.2(t(mat), dendro=dendro, Rowv=Rowv, Colv=Colv, trace=trace, col=col, mar=mar,...)
 }
 
@@ -409,4 +425,3 @@ plotFootLine <- function(l, xlab="base pairs from region start", ylab="average v
 		legend(loc, legend=c("sense strand", "antisense strand"), col=c("blue", "red"), lty=1, bty="n")
 	}
 }
-

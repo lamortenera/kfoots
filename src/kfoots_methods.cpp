@@ -396,17 +396,6 @@ Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericVector posteriors, Rcpp::Li
 }
 
 
-// [[Rcpp::export]]
-Rcpp::IntegerVector tabFast(Rcpp::IntegerVector counts){
-	int min = Rcpp::min(counts);
-	int max = Rcpp::max(counts);
-	if (min < 0) Rcpp::stop("The 'counts' vector must contain only positive numbers");
-	Rcpp::IntegerVector tab(max+1);
-	int* C = counts.begin(); int* T = tab.begin();
-	for (int i = 0, e = counts.length(); i < e; ++i) ++T[C[i]];
-	return tab;
-}
-
 
 /*
 // [[Rcpp::export]]

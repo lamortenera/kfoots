@@ -58,6 +58,53 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
+// tabFast
+Rcpp::IntegerVector tabFast(Rcpp::IntegerVector counts);
+RcppExport SEXP kfoots_tabFast(SEXP countsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type counts(countsSEXP );
+        Rcpp::IntegerVector __result = tabFast(counts);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// tabCols
+Rcpp::List tabCols(Rcpp::IntegerMatrix counts, int nthreads = 1);
+RcppExport SEXP kfoots_tabCols(SEXP countsSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::List __result = tabCols(counts, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// tabRows
+Rcpp::List tabRows(Rcpp::IntegerMatrix counts, int nthreads = 1);
+RcppExport SEXP kfoots_tabRows(SEXP countsSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::List __result = tabRows(counts, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
 // labelCounts
 Rcpp::IntegerVector labelCounts(Rcpp::NumericVector empirical, Rcpp::NumericVector theoretical);
 RcppExport SEXP kfoots_labelCounts(SEXP empiricalSEXP, SEXP theoreticalSEXP) {
@@ -74,8 +121,26 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
+// clusterAverages2
+Rcpp::List clusterAverages2(Rcpp::IntegerMatrix counts, Rcpp::IntegerMatrix coords, Rcpp::List clusters, int nthreads = 1);
+RcppExport SEXP kfoots_clusterAverages2(SEXP countsSEXP, SEXP coordsSEXP, SEXP clustersSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type coords(coordsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::List >::type clusters(clustersSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::List __result = clusterAverages2(counts, coords, clusters, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
 // clusterAverages
-Rcpp::List clusterAverages(Rcpp::IntegerMatrix counts, Rcpp::List clusters, int nthreads);
+Rcpp::List clusterAverages(Rcpp::IntegerMatrix counts, Rcpp::List clusters, int nthreads = 1);
 RcppExport SEXP kfoots_clusterAverages(SEXP countsSEXP, SEXP clustersSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
@@ -85,6 +150,104 @@ BEGIN_RCPP
         Rcpp::traits::input_parameter< Rcpp::List >::type clusters(clustersSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
         Rcpp::List __result = clusterAverages(counts, clusters, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// fillPosteriors
+void fillPosteriors(Rcpp::IntegerMatrix coords, Rcpp::List clusters, Rcpp::NumericMatrix posteriors, int nthreads = 1);
+RcppExport SEXP kfoots_fillPosteriors(SEXP coordsSEXP, SEXP clustersSEXP, SEXP posteriorsSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type coords(coordsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::List >::type clusters(clustersSEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type posteriors(posteriorsSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        fillPosteriors(coords, clusters, posteriors, nthreads);
+    }
+    return R_NilValue;
+END_RCPP
+}
+// rowcov
+Rcpp::NumericMatrix rowcov(Rcpp::NumericMatrix counts, bool besselCorr = true, int nthreads = 1);
+RcppExport SEXP kfoots_rowcov(SEXP countsSEXP, SEXP besselCorrSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< bool >::type besselCorr(besselCorrSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::NumericMatrix __result = rowcov(counts, besselCorr, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// matprod
+void matprod(Rcpp::NumericMatrix mat1, Rcpp::NumericMatrix mat2, Rcpp::NumericMatrix mat3, int nthreads = 1);
+RcppExport SEXP kfoots_matprod(SEXP mat1SEXP, SEXP mat2SEXP, SEXP mat3SEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type mat1(mat1SEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type mat2(mat2SEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type mat3(mat3SEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        matprod(mat1, mat2, mat3, nthreads);
+    }
+    return R_NilValue;
+END_RCPP
+}
+// discretizeRows
+Rcpp::IntegerMatrix discretizeRows(Rcpp::NumericMatrix scores, int nlevels, int nthreads = 1);
+RcppExport SEXP kfoots_discretizeRows(SEXP scoresSEXP, SEXP nlevelsSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type scores(scoresSEXP );
+        Rcpp::traits::input_parameter< int >::type nlevels(nlevelsSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::IntegerMatrix __result = discretizeRows(scores, nlevels, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// splitAxes
+Rcpp::IntegerMatrix splitAxes(Rcpp::NumericMatrix scores, int nsplit, int nthreads = 1);
+RcppExport SEXP kfoots_splitAxes(SEXP scoresSEXP, SEXP nsplitSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type scores(scoresSEXP );
+        Rcpp::traits::input_parameter< int >::type nsplit(nsplitSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::IntegerMatrix __result = splitAxes(scores, nsplit, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// splitAxesInt
+Rcpp::IntegerMatrix splitAxesInt(Rcpp::IntegerMatrix scores, int nsplit, int nthreads = 1);
+RcppExport SEXP kfoots_splitAxesInt(SEXP scoresSEXP, SEXP nsplitSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type scores(scoresSEXP );
+        Rcpp::traits::input_parameter< int >::type nsplit(nsplitSEXP );
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::IntegerMatrix __result = splitAxesInt(scores, nsplit, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);
@@ -323,21 +486,6 @@ BEGIN_RCPP
         Rcpp::traits::input_parameter< std::string >::type type(typeSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
         Rcpp::List __result = fitModelsGapMat(counts, posteriors, models, ucs, type, nthreads);
-        PROTECT(__sexp_result = Rcpp::wrap(__result));
-    }
-    UNPROTECT(1);
-    return __sexp_result;
-END_RCPP
-}
-// tabFast
-Rcpp::IntegerVector tabFast(Rcpp::IntegerVector counts);
-RcppExport SEXP kfoots_tabFast(SEXP countsSEXP) {
-BEGIN_RCPP
-    SEXP __sexp_result;
-    {
-        Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type counts(countsSEXP );
-        Rcpp::IntegerVector __result = tabFast(counts);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);
