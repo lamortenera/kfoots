@@ -153,7 +153,7 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 		} else if (init=="cool" || init=="pca"){
 			init <- initCool(counts, k, nlev=init.nlev, nbtype=nbtype, nthreads=nthreads, axes=ifelse(init=="pca","pca","counts"), verbose=verbose)
 			models <- init$models
-			if (is.null(trans)) trans <- t(sapply(1:k, function(i) init$mix_coeff))
+			mix_coeff <- init$mix_coeff
 		} else {
 			models <- initByTotCount(counts, k, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
 		}

@@ -2,7 +2,8 @@
 #include "core.cpp"
 
 
-static inline double forward_backward_core(Vec<double> initP, Mat<double> trans, Mat<double> lliks, Vec<int> seqlens, Mat<double> posteriors, Mat<double> new_trans, int nthreads){
+static inline double forward_backward_core(	Mat<double> initPs, Mat<double> trans, Mat<double> lliks, Vec<int> seqlens, 
+															Mat<double> posteriors, Mat<double> new_trans, Mat<double> new_initPs, int nthreads){
 	nthreads = std::max(1, nthreads);
 	
 	int nrow = lliks.nrow;
@@ -54,6 +55,8 @@ static inline double forward_backward_core(Vec<double> initP, Mat<double> trans,
 		for (int o = 0; o < nchunk; ++o){
 			int chunk_start = chunk_starts[o];
 			int chunk_end =  chunk_start + seqlens[o];
+			double* initP = initPs.colptr(o);
+			double* new_initP = new_initPs.colptr(o);
 			
 			/* FORWARD LOOP */
 			/* first iteration is from fictitious start state */
@@ -66,6 +69,7 @@ static inline double forward_backward_core(Vec<double> initP, Mat<double> trans,
 					forward[r] = p;
 					cf += p;
 				}
+				if (cf==0) Rcpp::stop("underflow error");
 				for (int r = 0; r < nrow; ++r){
 					forward[r] = forward[r]/cf;
 				}
@@ -88,6 +92,7 @@ static inline double forward_backward_core(Vec<double> initP, Mat<double> trans,
 					forward[t] = acc;
 					cf += acc;
 				}
+				if (cf==0) Rcpp::stop("underflow error");
 				for (int t = 0; t < nrow; ++t){
 					forward[t] = forward[t]/cf;
 				}
@@ -120,6 +125,7 @@ static inline double forward_backward_core(Vec<double> initP, Mat<double> trans,
 					new_backward[s] = acc;
 					cf += acc;
 				}
+				if (cf==0) Rcpp::stop("underflow error");
 				/* update backward vector */
 				for (int s = 0; s < nrow; ++s){
 					backward[s] = new_backward[s]/cf;
@@ -133,6 +139,10 @@ static inline double forward_backward_core(Vec<double> initP, Mat<double> trans,
 				for (int s = 0; s < nrow; ++s){
 					posterior[s] = posterior[s]*backward[s]/norm;
 				}
+			}
+			/* set new_initP */
+			for (int r = 0; r < nrow; ++r){
+				new_initP[r] = posteriors[r];
 			}
 		}
 		//protected access to the shared variables
@@ -171,7 +181,7 @@ typedef IntegerVector::iterator iiter;
 //' Warning: this function overwrites the lliks matrix. This is probably a bad idea
 //' because normally in the last loop you want to use the same matrix
 //' for forward_backward and viterbi. I might change that in the future.
-//' @param initP vector of initial probabilities
+//' @param initP matrix of initial probabilities: each column corresponds to a sequence
 //' @param trans transition matrix (rows are previous state, columns are next state)
 //' @param lliks matrix with emission probabilities for each datapoint and each state.
 //' Columns are datapoints and rows are states.
@@ -183,21 +193,23 @@ typedef IntegerVector::iterator iiter;
 //'	\item{new_trans}{update for the transition probabilities (it is already normalized)}
 //' @export
 // [[Rcpp::export]]
-List forward_backward(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, IntegerVector seqlens, NumericMatrix posteriors, int nthreads=1){
-	int nmod = initP.length();
+List forward_backward(NumericMatrix initP, NumericMatrix trans, NumericMatrix lliks, IntegerVector seqlens, NumericMatrix posteriors, int nthreads=1){
+	int nmod = initP.nrow();
 	double totlen = Rcpp::sum(seqlens);
 	if (nmod != trans.nrow() || nmod != trans.ncol() || nmod != lliks.nrow() || nmod != posteriors.nrow()) Rcpp::stop("Unable to figure out the number of models");
 	if (((double) lliks.ncol()) != totlen || ((double)posteriors.ncol()) != totlen) Rcpp::stop("Seqence lengths don't match with the provided matrices");
+	if (initP.ncol() != seqlens.length()) Rcpp::stop("'initP' must have as many columns as the number of sequences");
 	
 	NumericMatrix newTrans(trans.nrow(), trans.ncol());
-	double tot_llik = forward_backward_core(asVec(initP), asMat(trans), asMat(lliks), asVec(seqlens), asMat(posteriors), asMat(newTrans), nthreads);
-	return List::create(_("posteriors")=posteriors, _("tot_llik")=tot_llik, _("new_trans")=newTrans);
+	NumericMatrix newInitP(initP.nrow(), initP.ncol());
+	double tot_llik = forward_backward_core(asMat(initP), asMat(trans), asMat(lliks), asVec(seqlens), asMat(posteriors), asMat(newTrans), asMat(newInitP), nthreads);
+	return List::create(_("posteriors")=posteriors, _("tot_llik")=tot_llik, _("new_trans")=newTrans, _("new_initP")=newInitP);
 }
 
 //' Viterbi algorithm
 //'
 //' Standard viterbi algorithm in the log space
-//' @param initP vector of initial probabilities
+//' @param initP matrix of initial probabilities: each column corresponds to a sequence
 //' @param trans transition matrix (rows are previous state, columns are next state)
 //' @param lliks matrix with emission probabilities for each datapoint and each state.
 //' Columns are datapoints and rows are states.
@@ -208,7 +220,7 @@ List forward_backward(NumericVector initP, NumericMatrix trans, NumericMatrix ll
 //'	\item{vllik}{log-likelihood of the viterbi path}
 //' @export
 // [[Rcpp::export]]
-List viterbi(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, NumericVector seqlens){
+List viterbi(NumericMatrix initP, NumericMatrix trans, NumericMatrix lliks, NumericVector seqlens){
 	int nmod = initP.length();
 	double totlen = Rcpp::sum(seqlens);
 	if (nmod != trans.nrow() || nmod != trans.ncol() || nmod != lliks.nrow()) Rcpp::stop("Unable to figure out the number of models");
@@ -232,7 +244,7 @@ List viterbi(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, Nume
 	for (int o = 0, chunk_start = 0; o < seqlens.length(); chunk_start += seqlens[o], ++o){
 		int chunk_end = chunk_start + seqlens[o];
 		/* dynamic programming */
-		scores = lliks.column(chunk_start) + log(initP);
+		scores = lliks.column(chunk_start) + log(initP.column(o));
 		for (int i = chunk_start + 1; i < chunk_end; ++i){
 			
 			MatrixColumn<REALSXP> llikcol = lliks.column(i);

@@ -6,13 +6,13 @@
 using namespace Rcpp;
 
 // forward_backward
-List forward_backward(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, IntegerVector seqlens, NumericMatrix posteriors, int nthreads = 1);
+List forward_backward(NumericMatrix initP, NumericMatrix trans, NumericMatrix lliks, IntegerVector seqlens, NumericMatrix posteriors, int nthreads = 1);
 RcppExport SEXP kfoots_forward_backward(SEXP initPSEXP, SEXP transSEXP, SEXP lliksSEXP, SEXP seqlensSEXP, SEXP posteriorsSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
         Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< NumericVector >::type initP(initPSEXP );
+        Rcpp::traits::input_parameter< NumericMatrix >::type initP(initPSEXP );
         Rcpp::traits::input_parameter< NumericMatrix >::type trans(transSEXP );
         Rcpp::traits::input_parameter< NumericMatrix >::type lliks(lliksSEXP );
         Rcpp::traits::input_parameter< IntegerVector >::type seqlens(seqlensSEXP );
@@ -26,13 +26,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // viterbi
-List viterbi(NumericVector initP, NumericMatrix trans, NumericMatrix lliks, NumericVector seqlens);
+List viterbi(NumericMatrix initP, NumericMatrix trans, NumericMatrix lliks, NumericVector seqlens);
 RcppExport SEXP kfoots_viterbi(SEXP initPSEXP, SEXP transSEXP, SEXP lliksSEXP, SEXP seqlensSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
         Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< NumericVector >::type initP(initPSEXP );
+        Rcpp::traits::input_parameter< NumericMatrix >::type initP(initPSEXP );
         Rcpp::traits::input_parameter< NumericMatrix >::type trans(transSEXP );
         Rcpp::traits::input_parameter< NumericMatrix >::type lliks(lliksSEXP );
         Rcpp::traits::input_parameter< NumericVector >::type seqlens(seqlensSEXP );

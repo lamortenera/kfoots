@@ -33,7 +33,7 @@
 #'			whole dataset across iterations}
 #'		\item{viterbi}{see output of \code{viterbi}}
 #' @export
-hmmfoots <- function(counts, k, trans=NULL, tol = 1e-8, maxiter=100, nthreads=1,
+hmmfoots <- function(counts, k, trans=NULL, initP=NULL, tol = 1e-8, maxiter=100, nthreads=1,
 	nbtype=c("indep","dep","pois"), init=c("rnd","totcount","cool","pca"), init.nlev=5, verbose=FALSE, seqlens=ncol(counts)){
 	if (!is.matrix(counts))
 		stop("invalid counts variable provided. It must be a matrix")
@@ -59,23 +59,6 @@ hmmfoots <- function(counts, k, trans=NULL, tol = 1e-8, maxiter=100, nthreads=1,
 	#precompute some stuff for optimization
 	ucs <- mapToUnique(colSumsInt(counts, nthreads))
 	mConst <- getMultinomConst(counts, nthreads)
-	 
-	if (is.null(models)){
-		#get initial random models. Need to be kind-of similar to
-		#the count matrix, cannot be completely random
-		if (init=="rnd"){
-			models <- rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
-		} else if (init=="cool" || init=="pca"){
-			init <- initCool(counts, k, nlev=init.nlev, nbtype=nbtype, nthreads=nthreads, axes=ifelse(init=="pca","pca","counts"), verbose=verbose)
-			models <- init$models
-			if (is.null(trans)) trans <- t(sapply(1:k, function(i) init$mix_coeff))
-		} else {
-			models <- initByTotCount(counts, k, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
-		}
-	}
-	if (is.null(trans)){
-		trans <- matrix(rep(1/k, k*k), ncol=k)
-	}
 	
 	if (sum(seqlens) < nloci){
 		warning("the provided seqlens do not add up to the total input length (ncol(counts)), adding a chunk to cover all the input")
@@ -83,6 +66,41 @@ hmmfoots <- function(counts, k, trans=NULL, tol = 1e-8, maxiter=100, nthreads=1,
 	} else if (sum(seqlens) > nloci){
 		stop("invalid value for seqlens, the chunks sum up to more than the total input length")
 	}
+	
+	if (is.null(models)){
+		if (init=="rnd"){
+			#get initial random models. Need to be kind-of similar to
+			#the count matrix, cannot be completely random
+			models <- rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
+		} else if (init=="cool" || init=="pca"){
+			init <- initCool(counts, k, nlev=init.nlev, nbtype=nbtype, nthreads=nthreads, axes=ifelse(init=="pca","pca","counts"), verbose=verbose)
+			models <- init$models
+			if (is.null(trans)) trans <- t(sapply(1:k, function(i) init$mix_coeff))
+			if (is.null(trans)) initP <- sapply(1:length(seqlens), function(i) init$mix_coeff)
+		} else {
+			models <- initByTotCount(counts, k, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
+		}
+	}
+	if (is.null(trans)) {
+		trans <- matrix(rep(1/k, k*k), ncol=k)
+	} else if (is.matrix(trans) && (ncol(trans) != k || nrow(trans) != k)) {
+		stop("'trans' must be a k*k transition matrix")
+	} else if (!is.matrix(trans)){
+		stop("'trans' must be a matrix")
+	} 
+	if (any(!compare(rowSums(trans), rep(1, k), tol))) stop("'trans' rows must sum up to 1")
+	
+	if (is.null(initP)) {
+		initP <- matrix(rep(1/k, k*length(seqlens)), ncol=length(seqlens))
+	} else if (is.vector(initP)&&!is.matrix(initP)&&length(seqlens)==1&&length(initP)==k){
+		initP <- matrix(initP, ncol=1)
+	} else if (is.matrix(initP) && (nrow(initP)!=k || ncol(initP)!=length(seqlens))){
+		stop("invalid 'initP' matrix provided: one column per sequence and one row per model")
+	} else {
+		stop("'initP' must be a matrix, or a vector if there is only one sequence")
+	}
+	if (any(!compare(colSums(initP), rep(1, ncol(initP)), tol))) stop("'initP' columns must sum up to 1")
+	
 	
 	#allocating memory
 	posteriors <- matrix(0, nrow=k, ncol=nloci)
@@ -96,12 +114,11 @@ hmmfoots <- function(counts, k, trans=NULL, tol = 1e-8, maxiter=100, nthreads=1,
 	for (iter in 1:maxiter){
 		lLikMat(lliks=lliks, counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)
 	
-		initP <- getSteadyState(trans)
-		
 		res <- forward_backward(posteriors=posteriors, initP, trans, lliks, seqlens, nthreads=nthreads)
 		
 		new_loglik <- res$tot_llik
 		new_trans <- res$new_trans
+		new_initP <- res$new_initP
 
 		if (verbose){
 			cat("Iteration: ", iter, ", log-likelihood: ", new_loglik, "\n")
@@ -120,6 +137,7 @@ hmmfoots <- function(counts, k, trans=NULL, tol = 1e-8, maxiter=100, nthreads=1,
 		trans <- new_trans
 		models <- new_models
 		loglik <- new_loglik
+		initP <- new_initP
 		llhistory[iter] <- loglik
 		if (converged){
 			break
@@ -138,7 +156,7 @@ hmmfoots <- function(counts, k, trans=NULL, tol = 1e-8, maxiter=100, nthreads=1,
 	#same as: clusters <- apply(posteriors, 2, which.max)
 	clusters <- pwhichmax(posteriors, nthreads=nthreads)
 	
-	list(models=models, trans=new_trans, loglik = loglik,
+	list(models=models, trans=trans, initP=initP, loglik = loglik,
 	posteriors=posteriors, clusters=clusters, converged = converged, llhistory=llhistory[1:iter],
 	viterbi=viterbi_path)
 	
@@ -156,32 +174,50 @@ hmmfoots <- function(counts, k, trans=NULL, tol = 1e-8, maxiter=100, nthreads=1,
 getSteadyState <- function(trans){
 	#first try with diagonalization, 
 	#if it fails, exponentiate the trans matrix by a large number
-	etrans <- tryCatch(
-		eigen(t(trans)),
-		error=function(e) NULL)
+	#etrans <- tryCatch(
+	#	eigen(t(trans)),
+	#	error=function(e) NULL)
 	
 	#ttrans2 ~ t(matpow(trans, Inf)) (it is transposed wrt trans)
-	ttrans2 <- tryCatch({
-		evalues <- etrans$values
-		for (i in seq_along(evalues)){
-			if (abs(1-evalues[i]) < 1e-12){
-				#eigenvalue has real part almost one and imaginary part almost 0, keep it
-				evalues[i] <- 1
-			} else {
-				#eigenvalue less than one (in modulus), it will disappear, 
-				#or with modulus one but complex, it will rotate all the time
-				#in the gauss circle and average to 0.
-				evalues[i] <- 0
-			}
-		}
-		etrans$vectors %*% diag(evalues) %*% solve(etrans$vectors)
-		},error=function(e) {
-		#this is not very good when there are oscillatory behaviours...
-		t(matpow(trans, 2^20))
-	})
-	
+	#ttrans2 <- tryCatch({
+	#	evalues <- etrans$values
+	#	for (i in seq_along(evalues)){
+	#		if (abs(1-evalues[i]) < 1e-12){
+	#			#eigenvalue has real part almost one and imaginary part almost 0, keep it
+	#			evalues[i] <- 1
+	#		} else {
+	#			#eigenvalue less than one (in modulus), it will disappear, 
+	#			#or with modulus one but complex, it will rotate all the time
+	#			#in the gauss circle and average to 0.
+	#			evalues[i] <- 0
+	#		}
+	#	}
+	#	etrans$vectors %*% diag(evalues) %*% solve(etrans$vectors)
+	#	},error=function(e) {
+	#	#this is not very good when there are oscillatory behaviours...
+	#	t(matpow(trans, 2^20))
+	#})
+	ttrans2 <- t(matpowtrans(trans, 2^30))
 	as.numeric(ttrans2 %*% rep(1/ncol(trans), ncol(trans)))
 	
+}
+
+#fast exponentiation algorithm,
+#correct numerical fuzz by exploiting that 
+#the rowSums sum up to 1
+matpowtrans <- function(trans, pow){
+	if (pow==1){
+		trans
+	}
+	else if (pow %% 2 == 0){
+		tmp <- matpowtrans(trans, pow/2)
+		tmp <- tmp %*% tmp
+		tmp/rowSums(tmp)
+	}
+	else {
+		tmp <- trans %*% matpowtrans(trans, pow-1)
+		tmp/rowSums(tmp)
+	}
 }
 
 #fast exponentiation algorithm

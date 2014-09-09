@@ -8,7 +8,7 @@
 #' Warning: this function overwrites the lliks matrix. This is probably a bad idea
 #' because normally in the last loop you want to use the same matrix
 #' for forward_backward and viterbi. I might change that in the future.
-#' @param initP vector of initial probabilities
+#' @param initP matrix of initial probabilities: each column corresponds to a sequence
 #' @param trans transition matrix (rows are previous state, columns are next state)
 #' @param lliks matrix with emission probabilities for each datapoint and each state.
 #' Columns are datapoints and rows are states.
@@ -26,7 +26,7 @@ forward_backward <- function(initP, trans, lliks, seqlens, posteriors, nthreads 
 #' Viterbi algorithm
 #'
 #' Standard viterbi algorithm in the log space
-#' @param initP vector of initial probabilities
+#' @param initP matrix of initial probabilities: each column corresponds to a sequence
 #' @param trans transition matrix (rows are previous state, columns are next state)
 #' @param lliks matrix with emission probabilities for each datapoint and each state.
 #' Columns are datapoints and rows are states.
