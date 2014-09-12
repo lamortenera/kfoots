@@ -3,7 +3,6 @@
 #include <algorithm> 
 
 
-
 static inline double llik2posteriors_core(Mat<double> lliks, Vec<double> mix_coeff, Mat<double> posteriors, int nthreads){
 	long double tot = 0;
 	int ncol = lliks.ncol;
@@ -24,24 +23,18 @@ static inline double llik2posteriors_core(Mat<double> lliks, Vec<double> mix_coe
 		for (int col = 0; col < ncol; ++col){
 			double* lliksCol = lliks.colptr(col);
 			double* postCol = posteriors.colptr(col);
-			//adding the mixing coefficients
+			double cmax = -std::numeric_limits<double>::infinity();
+			//adding the mixing coefficients and getting maximum
 			for (int row = 0; row < nrow; ++row){
-				lliksCol[row] += mix_coeff[row];
-			}
-			//getting maximum
-			double cmax = lliksCol[0];
-			for (int row = 1; row < nrow; ++row){
-				if (lliksCol[row] > cmax) {
-					cmax = lliksCol[row];
-				} 
+				postCol[row] = lliksCol[row] + mix_coeff[row];
+				if (postCol[row] > cmax) cmax = postCol[row];
 			}
 			thread_tot += cmax;
 			double psum = 0;
 			//subtracting maximum and exponentiating sumultaneously
 			for (int row = 0; row < nrow; ++row){
-				double tmp = exp(lliksCol[row] - cmax);
-				postCol[row] = tmp;
-				psum += tmp;
+				postCol[row] = exp(postCol[row] - cmax);
+				psum += postCol[row];
 			}
 			thread_tot += log(psum);
 			for (int row = 0; row < nrow; ++row){
@@ -72,14 +65,13 @@ static inline double llik2posteriors_core(Mat<double> lliks, Vec<double> mix_coe
 	return (double) tot;
 }
 
-
 // [[Rcpp::export]]
 Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector mix_coeff, Rcpp::NumericMatrix posteriors, int nthreads=1){
 	if (lliks.nrow() != posteriors.nrow() || lliks.ncol() != posteriors.ncol()) Rcpp::stop("lliks and posteriors matrix don't have the same format!");
 	if (mix_coeff.length() != lliks.nrow()) Rcpp::stop("mix_coeff doens't match with the provided matrices");
 	
-	//copy the vector (I hope...)
-	Rcpp::NumericVector new_mix_coeff(mix_coeff);
+	//copy the vector
+	Rcpp::NumericVector new_mix_coeff(mix_coeff.begin(), mix_coeff.end());
 	
 	double tot = llik2posteriors_core(asMat(lliks), asVec(new_mix_coeff), asMat(posteriors), nthreads);
 	
@@ -325,18 +317,18 @@ Rcpp::IntegerVector pwhichmax(Rcpp::NumericMatrix posteriors, int nthreads=1){
 }
 
 // [[Rcpp::export]]
-Rcpp::List fitNB_inner(Rcpp::IntegerVector counts, Rcpp::NumericVector posteriors, double initR=-1){
+Rcpp::List fitNB_inner(Rcpp::IntegerVector counts, Rcpp::NumericVector posteriors, double initR=-1, double tol=1e-8, int nthreads=1){
 	if (counts.length() != posteriors.length()) Rcpp::stop("counts and posteriors don't match");
 	double mu = -1;
 	double r = -1;
-	fitNB_core(asVec(counts), asVec(posteriors), &mu, &r, initR);
+	fitNB_core(asVec(counts), asVec(posteriors), &mu, &r, initR, tol, nthreads);
 	
 	return Rcpp::List::create(Rcpp::Named("mu")=mu, Rcpp::Named("r")=r);
 }
 
 
 template<template <typename> class TMat>
-inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, std::string type="indep", int nthreads=1){
+inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, std::string type="indep", double tol=1e-8, int nthreads=1){
 	int nmodels = models.length();
 	int footlen = counts.nrow;
 	
@@ -365,7 +357,8 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteri
 	std::vector<double> tmpNB(uniqueCS.length()*nmodels);
 	
 	if (type=="indep"){//independent negative binomials, fit both mu and r
-		fitNBs_core(postMat, mus, rs, preproc, asMat(tmpNB, nmodels), nthreads);
+		fitNBs_core(postMat, mus, rs, preproc, asMat(tmpNB, nmodels), tol=tol, nthreads=nthreads);
+		
 	} else if (type=="nofit" || type=="pois"){
 		//fit only the mus
 		//if pois is selected, set r to Inf
@@ -376,7 +369,7 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteri
 		if (type=="pois"){ for (int i = 0; i < nmodels; ++i) {rs[i] = INFINITY; } }
 	} else if (type=="dep"){//constrain the NBs to have the same r
 		double r = rs[0];
-		fitNBs_1r_core(postMat, mus, &r, preproc, asMat(tmpNB, nmodels), nthreads);
+		fitNBs_1r_core(postMat, mus, &r, preproc, asMat(tmpNB, nmodels), tol, nthreads);
 		for (int i = 0; i < nmodels; ++i){ rs[i] = r; }
 	} else Rcpp::stop("Invalid fitting method provided: must be one among 'indep', 'nofit', 'pois' and 'dep'.");
 	fitMultinoms_core(counts, postMat, ps, nthreads);
@@ -386,13 +379,13 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteri
 
 
 // [[Rcpp::export]]
-Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, std::string type="indep", int nthreads=1){
-	return fitModels_helper(asMat(counts), posteriors, models, ucs, type, nthreads);
+Rcpp::List fitModels(Rcpp::IntegerMatrix counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, std::string type="indep", double tol=1e-8, int nthreads=1){
+	return fitModels_helper(asMat(counts), posteriors, models, ucs, type, tol, nthreads);
 }
 
 // [[Rcpp::export]]
-Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, std::string type="indep", int nthreads=1){
-	return fitModels_helper(asGapMat<int>(counts), posteriors, models, ucs, type, nthreads);
+Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericVector posteriors, Rcpp::List models, Rcpp::List ucs, std::string type="indep", double tol=1e-8, int nthreads=1){
+	return fitModels_helper(asGapMat<int>(counts), posteriors, models, ucs, type, tol, nthreads);
 }
 
 

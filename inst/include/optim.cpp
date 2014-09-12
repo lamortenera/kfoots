@@ -187,7 +187,8 @@ static inline void bfgs_wrapper(optimfn fn, optimgr gr, void* ex, double* x, dou
 #define SHFT(a,b,c,d) (a)=(b);(b)=(c);(c)=(d);
 #define SIGN(a,b) ((b) >= 0.0 ? fabs(a) : -fabs(a))
 #define FMAX(a,b) ((a) > (b) ? (a) : (b))
-
+//it must hold that f(x), where x is the middle of the output braketing triple,
+// is less or equal to both f(ax) and f(bx)
 static void mnbrak(double* _ax, double* _bx, double* _cx, double* _fa, double* _fb, double* _fc, double (*func)(double, void*), void* info){
 	double ax = *_ax;
 	double bx = *_bx;
@@ -253,6 +254,8 @@ static void mnbrak(double* _ax, double* _bx, double* _cx, double* _fa, double* _
 //I modified only the initializations so that it can use
 //all the information gained in mnbrak: the three initial
 //points and the three initial values.
+//it must hold that f(x), where x is the output of the algorithm,
+// is less or equal to all of f(ax), f(bx) and f(xx)
 static double Brent_fmin(double ax, double xx, double bx, double fai, double fxi, double fbi, double (*f)(double, void *), void *info, double tol)
 {
     /*  c is the squared inverse of the golden ratio */
@@ -369,15 +372,17 @@ static double brent_wrapper(double x1, double x2, double (*f)(double, void *), v
 	/*
 					double initScore = (*f)(x1, info);
 	*/
-	
+	//std::cout << "initial pair:\t" << exp(x1) << "\t" << exp(x2) << std::endl;
+	//std::cout << "tolerance:\t" << tol << std::endl;
+	//std::cout << "braketing the minimum" << std::endl;
 	mnbrak(&x1, &x2, &x3, &f1, &f2, &f3, f, info);
-	
 	//reorder points from smallest to biggest
 	if (x3 < x1){
 		SHFT(tmp, x1, x3, tmp)
 		SHFT(tmp, f1, f3, tmp)
 	}
-	
+	//std::cout << "braketing triple (x):\t" << exp(x1) << "\t" << exp(x2) << "\t" << exp(x3) << std::endl;
+	//std::cout << "braketing triple f(x):\t" << f1 << "\t" << f2 << "\t" << f3 << std::endl;
 	/*
 				double F1 = (*f)(x1, info);
 				double F2 = (*f)(x2, info);
@@ -394,9 +399,9 @@ static double brent_wrapper(double x1, double x2, double (*f)(double, void *), v
 					std::cout << "That's a bad braketing triple... " << std::endl;
 				}
 	*/
-	
+	//std::cout << "calling brent" << std::endl;
 	double ret = Brent_fmin(x1, x2, x3, f1, f2, f3, f, info, tol);
-	
+	//std::cout << "brent returned:\t" << exp(ret) << std::endl;
 	/*
 				double finalScore = (*f)(ret, info);
 				if (finalScore > F2){

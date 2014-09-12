@@ -216,117 +216,8 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 }
 
 
-#to be parallelized, or avoid iteration through the whole matrix
-initByTotCount <- function(counts, k, ucs=NULL, nbtype="indep", nthreads=1){
-	cs <- colSumsInt(counts, nthreads)
-	#the basic idea is to divide the counts into quantiles and to set each cluster to a different quantile
-	#but we want to detect the "zero-inflated" component, if present, and set it to a cluster
-	#it is present if the abundance of 'zeros' is higher than the abundance of 'ones'
-	#if this is the case, one cluster will consist of only zeros and ones
-	tab <- tabFast(cs)#abundance of each count
-	if (length(tab) > 2 && tab[1] > tab[2] && (length(cs) - sum(tab[1:2]) > k-1)) {
-		p1 <- sum(tab[1:2])/length(cs) #portion of counts corresponding to the 'zero-inflated' mode
-	} else {
-		p1 <- 1/k
-	}
-	ps <- c(p1, rep((1-p1)/(k-1), k-1))
-	qs <- cumsum(c(0, ps))
-	#perturb cs to resolve ties 
-	set.seed(17)
-	cs <- cs + rnorm(length(cs), sd=0.001)
-	#get thresholds
-	thresh <- quantile(cs, qs)
-	#get cluster assignments
-	thresh[length(thresh)] <- thresh[length(thresh)] + 1 #to include rightmost point in the last cluster
-	f <- as.integer(cut(cs, thresh, right=F))
-	#check that there is at least one datapoint for each cluster
-	check <- tabFast(f)
-	if (any(check[2:length(check)] == 0)) stop("initialization by total count failed (too few columns? too many models?)")
-	
-	#get posteriors
-	posteriors <- matrix(0, nrow=k, ncol=length(cs))
-	posteriors[k*(0:(length(cs)-1)) + f] <- 1
-	
-	models <- list()
-	for (i in 1:k){ models[[i]] <- list(mu=-1, r=-1, ps=numeric(nrow(counts))) }
-	
-	fitModels(counts, posteriors, models, ucs=ucs, type=nbtype, nthreads=nthreads)
-}
 
-
-#to be parallelized, or avoid iteration through the whole matrix
-rndModels <- function(counts, k, bgr_prior=0.5, ucs=NULL, nbtype="indep", nthreads=1){
-	seeds <- getUniqueSeeds(counts, k)
-	modelsFromSeeds(counts, seeds, bgr_prior=bgr_prior, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
-}
-
-#seeds are columns of the count matrix which are guaranteed to be distinct.
-#they are used to initialize the models
-modelsFromSeeds <- function(counts, seeds, bgr_prior=0.5, ucs=NULL, nbtype="indep", nthreads=1){
-	
-	posteriors <- matrix(nrow=length(seeds), ncol=ncol(counts), bgr_prior)
-	#perturb row i at column seeds[i]
-	perturb_pos <- seeds*length(seeds) + 1:length(seeds)
-	posteriors[perturb_pos] <- 1 + bgr_prior
-	
-	#initialize empty models
-	models <- list()
-	for (i in seq_along(seeds)){ models[[i]] <- list(mu=-1, r=-1, ps=numeric(nrow(counts))) }
-	
-	fitModels(counts, posteriors, models, ucs=ucs, type=nbtype, nthreads=nthreads)
-}
-
-#find k unique seeds as fast as possible given that "counts" could be huge.
-#It sorts increasing subsets of the counts matrix until it finds a sufficient
-#number of unique elements
-getUniqueSeeds <- function(counts, k){
-	#shuffle the matrix, dupicated columns are likely to be adjacent
-	shuffle <- sample(ncol(counts), ncol(counts))
-	if (k==1)
-		return(shuffle[1])
-		
-	#duplicate the size of the sorted matrix every time
-	old_size <- 0
-	size <- k
-	unique_cols <- c()
-	
-	while (old_size < ncol(counts)){
-		#concatenate the old ones with the new ones
-		newcols <- shuffle[(old_size+1):size]
-		new_unique_cols <- newcols[uniqueColumns(counts[,newcols, drop=FALSE])]
-		unique_cols <- c(unique_cols, new_unique_cols)
-		#check if there are duplicates (merge the two sets)
-		if (length(unique_cols)>1) 
-			unique_cols <- unique_cols[uniqueColumns(counts[,unique_cols, drop=FALSE])]
-		
-		if (length(unique_cols)>=k)
-			return (unique_cols[1:k])
-		
-		old_size <- size
-		size <- min(2*size, ncol(counts))
-	}
-	stop(paste("At least",k,"distinct columns are needed, found",length(unique_cols)))
-}
-
-#return indices of first occurrences of all unique columns in the matrix
-#(it's 15 times faster than duplicated(counts, MARGIN=2) but it does the same)
-uniqueColumns <- function(counts){
-	nc <- ncol(counts)
-	nr <- nrow(counts)
-	#lexicographic sorting of the columns (loci)
-	o <- orderColumns(counts)
-	io <- (1:length(o))[o]
-	counts <- counts[,o, drop=FALSE]
-	#identify runs of identical columns
-	d <- .colSums(abs(counts - counts[, c(1, 1:(nc-1)), drop=FALSE]), nr, nc)>0
-	d[1] <- TRUE
-	#get leading indexes positions
-	io[(1:nc)[d]]
-	
-}
-
-
-#same as before but no fitting is done for the ps variables
+#no fitting is done for the ps variables
 fitNoiseModel <- function(counts, posteriors=NULL, old_r=NULL, maxit=100, ucs=NULL, nthreads=1){
 	if (is.null(posteriors))
 		posteriors <- rep(1.0, ncol(counts))
@@ -367,7 +258,7 @@ fitNoiseModel <- function(counts, posteriors=NULL, old_r=NULL, maxit=100, ucs=NU
 #' 	\item{mu}{the mu parameter}
 #'		\item{r}{the size parameter}
 #' @export
-fitNB <- function(counts, posteriors=NULL, old_r=NULL, nthreads=1){
+fitNB <- function(counts, posteriors=NULL, old_r=NULL, tol=1e-8, nthreads=1){
 	#transforming the counts into unique counts
 	if (!is.list(counts)){
 		ucs <- mapToUnique(counts)
@@ -389,7 +280,7 @@ fitNB <- function(counts, posteriors=NULL, old_r=NULL, nthreads=1){
 		
 	}
 	
-	fitNB_inner(counts, posteriors, old_r)
+	fitNB_inner(counts, posteriors, old_r, tol=tol, nthreads=nthreads)
 	
 }
 
@@ -447,92 +338,3 @@ exampleData <- function(n=10000, indip=FALSE){
 }
 
 
-
-debugLikelihoodDecrease <- function(){
-	if (TRUE){
-			old_mll = sum(getLlik(counts, models[[m]])*posteriors[m,], na.rm=T)
-			new_mll = sum(getLlik(counts, new_models[[m]])*posteriors[m,], na.rm=T)
-			if (is.na(new_mll)){
-				print("got na from model: ")
-				print(new_models[[m]])
-				print("mixing coefficients: ")
-				print(mix_coeff)
-			}
-			if(
-				iter > 1 && 
-				old_mll > new_mll &&
-				!compare(old_mll, new_mll, tol)
-				
-			){
-				
-				print(paste0("fitted model worse than the old one at iteration ", iter))
-				
-				if (
-					sum(nbinom_logLik(colSums(counts), models[[m]]$mu, models[[m]]$r)*posteriors[m,], na.rm=T) >
-					sum(nbinom_logLik(colSums(counts), new_models[[m]]$mu, new_models[[m]]$r)*posteriors[m,], na.rm=T)
-				){
-					print("fitted parameters for the negative binomial are worse")
-					print(sum(nbinom_logLik(colSums(counts), models[[m]]$mu, models[[m]]$r)*posteriors[m,]))
-					print(sum(nbinom_logLik(colSums(counts), new_models[[m]]$mu, new_models[[m]]$r)*posteriors[m,]))
-				}
-				if (
-					sum(multinom_logLik(counts, models[[m]]$ps)*posteriors[m,]) >
-					sum(multinom_logLik(counts, new_models[[m]]$ps)*posteriors[m,])
-				){ print("fitted parameters for the multinomial are worse")}
-				
-				print("Old model: ")
-				print(models[[m]])
-				print("New model: ")
-				print(new_models[[m]])
-				stop()
-			}}
-}
-
-#if multinom_const is NA, the function returns the log-likelihood
-#minus a constant term that does not depend on the parameters.
-#equivalent to
-#dmultinom(counts[,i], prob=ps, log=T), if multinom_const is not NA, otherwise
-#dmultinom(counts[,i], prob=ps, log=T) - lfactorial(sum(counts[,i]) + sum(lfactorial(counts[,i]))
-multinom_logLik <- function(counts, ps, multinom_const=getMultinomConst(counts)){
-	nloci <- ncol(counts)
-	footlen <- nrow(counts)
-	res <- .colSums(counts*log(ps), footlen, nloci, na.rm=T)
-
-	if (!is.na(multinom_const)[1]){
-		res + multinom_const
-	} else {
-		res
-	}
-}
-
-#if multinom_const is NA, the function returns the log-likelihood
-#minus a constant term that does not depend on the parameters.
-getLlik <- function(counts, model, ucs=NA, multinom_const=getMultinomConst(counts)){
-	res <- multinom_logLik(counts, model$ps, multinom_const=multinom_const)
-	if (!(is.na(ucs)[1])){
-		res + nbinom_logLik(ucs$values, model$mu, model$r)[ucs$map+1]
-	} else {
-		res + nbinom_logLik(.colSums(counts, nrow(counts), ncol(counts)), model$mu, model$r)
-	}
-}
-
-nbinom_logLik <- function(cs, mu, r){
-	dnbinom(cs, mu=mu, size=r, log=T)
-}
-
-lLik <- function(counts, model, ucs=NULL, multinom_const=NULL, nthreads=1){
-	ans <- numeric(ncol(counts))
-	if (is.null(ucs)) ucs <- mapToUnique(colSums(counts))
-	if (is.null(multinom_const)) multinom_const <- getMultinomConst(counts)
-	lLikMat(counts, list(model), ucs, multinom_const, ans, nthreads)
-	
-	ans
-}
-
-
-fitModels_slow <- function(counts, posteriors, models, ucs, type="full"){
-	psmat <- counts %*% t(posteriors)
-	psmat <- apply(psmat, 2, function(v) v/sum(v))
-	
-	
-}

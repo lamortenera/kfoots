@@ -152,7 +152,7 @@ static double fn1d(double logr, void* data){
 			llik += lognbinom(counts[i], mu, r)*post[i];
 		}
 	}
-	
+	//std::cout << "fn1d(" << r << "):\t" << -llik << std::endl;
 	return -llik;
 }
 
@@ -231,7 +231,7 @@ static void validateAndLogBraketing(double* initR, double* guessR, double tol){
 	*initR = log(*initR);
 	//initial points too close to each other
 	if (fabs(*guessR - *initR) < tol*fabs(*guessR + *initR)/2){
-		*guessR = *initR*(1 - tol);
+		*guessR = *initR*0.9;
 	}
 }
 
@@ -240,12 +240,14 @@ static void validateAndLogBraketing(double* initR, double* guessR, double tol){
 //you need the guarantee that the r that you get will be better or equal to initR
 //if initR is acceptable (not negative and not infinity) it must be one of the two
 //points used for brent
-static inline void fitNB_core(Vec<int> counts, Vec<double> posteriors, double* mu, double* r, double initR, int nthreads=1){
-	//tolerance
-	double tol=1e-8;
+static inline void fitNB_core(Vec<int> counts, Vec<double> posteriors, double* mu, double* r, double initR, double tol=1e-8, int nthreads=1){
 	//get the variance of the data
 	double var, wsum;
 	meanAndVar(posteriors, counts, mu, &var, &wsum, 1);
+	if (var <= *mu){//underdispersion, ML maximum at r=Inf
+		*r = std::numeric_limits<double>::infinity();
+		return;
+	}
 	//the r that matches the sample variance
 	double guessR = (*mu)*(*mu) / (var  -  (*mu));
 	validateAndLogBraketing(&initR, &guessR, tol);
@@ -302,7 +304,7 @@ static inline void fitMeans_core(TVec<int> counts, Mat<double> posteriors, Vec<d
 }
 
 
-static inline void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
+static inline void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<double> rs, NMPreproc& preproc, Mat<double> tmpNB, double tol=1e-8, int nthreads=1){
 	int ncol = posteriors.ncol;
 	int nmod = posteriors.nrow;
 	if (mus.len != nmod || rs.len != nmod || tmpNB.ncol*tmpNB.nrow != nmod*preproc.uniqueCS.len || ncol != preproc.map.len){
@@ -338,12 +340,12 @@ static inline void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<doub
 			tmpNBCol[map[col]] += posteriors(mod, col);
 		}
 		//call the optimization procedure. This will use up to nthreads_inner threads
-		fitNB_core(values, Vec<double>(tmpNBCol, tmpNB.nrow), &mus[mod], &rs[mod], rs[mod], nthreads_inner);
+		fitNB_core(values, Vec<double>(tmpNBCol, tmpNB.nrow), &mus[mod], &rs[mod], rs[mod], tol=tol, nthreads=nthreads_inner);
 	}
 }
 
 
-static inline void fitNBs_1r_core(Mat<double> posteriors, Vec<double> mus, double* r, NMPreproc& preproc, Mat<double> tmpNB, int nthreads){
+static inline void fitNBs_1r_core(Mat<double> posteriors, Vec<double> mus, double* r, NMPreproc& preproc, Mat<double> tmpNB, double tol=1e-8, int nthreads=1){
 	int ncol = posteriors.ncol;
 	int nmod = posteriors.nrow;
 	if (mus.len != nmod || tmpNB.ncol*tmpNB.nrow != nmod*preproc.uniqueCS.len || ncol != preproc.map.len){
@@ -374,8 +376,6 @@ static inline void fitNBs_1r_core(Mat<double> posteriors, Vec<double> mus, doubl
 	double mean, var, wsum;
 	meanAndVar(asVec(totPost), values, &mean, &var, &wsum, nthreads);
 	//get two initial points
-	//tolerance
-	double tol=1e-8;
 	//the initial r
 	double initR = *r;
 	//the r that matches the sample variance

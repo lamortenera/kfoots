@@ -221,20 +221,19 @@ List forward_backward(NumericMatrix initP, NumericMatrix trans, NumericMatrix ll
 //' @export
 // [[Rcpp::export]]
 List viterbi(NumericMatrix initP, NumericMatrix trans, NumericMatrix lliks, NumericVector seqlens){
-	int nmod = initP.length();
+	int nmod = initP.nrow();
 	double totlen = Rcpp::sum(seqlens);
 	if (nmod != trans.nrow() || nmod != trans.ncol() || nmod != lliks.nrow()) Rcpp::stop("Unable to figure out the number of models");
-	if (((double) lliks.ncol()) != totlen) Rcpp::stop("Seqence lengths don't match with the provided matrix");
+	if (((double) lliks.ncol()) != totlen) Rcpp::stop("Sequence lengths don't match with the provided matrix");
 	
-	int k = initP.length();
 	int ncol = lliks.ncol();
-	NumericVector vpath(ncol);
-	IntegerMatrix backtrack(k, max(seqlens));
-	NumericVector scores(k);
-	NumericVector new_scores(k);
+	IntegerVector vpath(ncol);
+	IntegerMatrix backtrack(nmod, max(seqlens));
+	NumericVector scores(nmod);
+	NumericVector new_scores(nmod);
 	
 	/* log-transform the transition probabilities */
-	NumericMatrix ltrans(k,k);
+	NumericMatrix ltrans(nmod,nmod);
 	for (diter curr = ltrans.begin(), currt = trans.begin(); curr < ltrans.end(); ++curr, ++currt){
 		*curr = log(*currt);
 	}
@@ -250,10 +249,10 @@ List viterbi(NumericMatrix initP, NumericMatrix trans, NumericMatrix lliks, Nume
 			MatrixColumn<REALSXP> llikcol = lliks.column(i);
 			MatrixColumn<INTSXP> backtrackcol = backtrack.column(i-chunk_start);
 			
-			for (int t = 0; t < k; ++t){
+			for (int t = 0; t < nmod; ++t){
 				int maxs = 0;
 				double maxscore = scores[0] + ltrans(0, t);
-				for (int s = 1; s < k; ++s){
+				for (int s = 1; s < nmod; ++s){
 					double currscore = scores[s] + ltrans(s,t);
 					if (currscore > maxscore){
 						maxscore = currscore;
@@ -264,13 +263,13 @@ List viterbi(NumericMatrix initP, NumericMatrix trans, NumericMatrix lliks, Nume
 				new_scores[t] = llikcol[t] + maxscore;
 			}
 			
-			memcpy(scores.begin(), new_scores.begin(), sizeof(double)*k);
+			memcpy(scores.begin(), new_scores.begin(), sizeof(double)*nmod);
 		}
 		
 		/* backtracking */
 		int maxp = 0;
 		double maxscore = scores[0];
-		for (int p = 1; p < k; ++p){
+		for (int p = 1; p < nmod; ++p){
 			if (scores[p] > maxscore){
 				maxscore = scores[p];
 				maxp = p;

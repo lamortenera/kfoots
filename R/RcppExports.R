@@ -144,15 +144,15 @@ pwhichmax <- function(posteriors, nthreads = 1L) {
     .Call('kfoots_pwhichmax', PACKAGE = 'kfoots', posteriors, nthreads)
 }
 
-fitNB_inner <- function(counts, posteriors, initR = -1) {
-    .Call('kfoots_fitNB_inner', PACKAGE = 'kfoots', counts, posteriors, initR)
+fitNB_inner <- function(counts, posteriors, initR = -1, tol = 1e-8, nthreads = 1L) {
+    .Call('kfoots_fitNB_inner', PACKAGE = 'kfoots', counts, posteriors, initR, tol, nthreads)
 }
 
-fitModels <- function(counts, posteriors, models, ucs, type = "indep", nthreads = 1L) {
-    .Call('kfoots_fitModels', PACKAGE = 'kfoots', counts, posteriors, models, ucs, type, nthreads)
+fitModels <- function(counts, posteriors, models, ucs, type = "indep", tol = 1e-8, nthreads = 1L) {
+    .Call('kfoots_fitModels', PACKAGE = 'kfoots', counts, posteriors, models, ucs, type, tol, nthreads)
 }
 
-fitModelsGapMat <- function(counts, posteriors, models, ucs, type = "indep", nthreads = 1L) {
-    .Call('kfoots_fitModelsGapMat', PACKAGE = 'kfoots', counts, posteriors, models, ucs, type, nthreads)
+fitModelsGapMat <- function(counts, posteriors, models, ucs, type = "indep", tol = 1e-8, nthreads = 1L) {
+    .Call('kfoots_fitModelsGapMat', PACKAGE = 'kfoots', counts, posteriors, models, ucs, type, tol, nthreads)
 }
 
