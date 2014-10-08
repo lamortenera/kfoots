@@ -22,23 +22,26 @@ test_that("hmm functions work",{
 		#make the observations
 		obs <- sample(nsymb, sum(seqlen), replace=T)
 		#get their posteriors
-		seqstart <- cumsum(c(0,seqlen))
+		seqstart <- cumsum(c(1,seqlen))[1:length(seqlen)]
 		postList <- lapply(1:length(seqlen), function(idx){
-			s <- seqstart[idx] + 1
+			s <- seqstart[idx]
 			e <- s + seqlen[idx] - 1
 			HMM:::posterior(hmm, obs[s:e])
 		})
 		their_post <- do.call(cbind, postList)
-		#get their expected transition probabilities
+		#get their new init probabilities
+		their_initP <- their_post[,seqstart]
+		
+		#get their new transition probabilities
 		transList <- lapply(1:length(seqlen), function(idx){
-			s <- seqstart[idx] + 1
+			s <- seqstart[idx]
 			e <- s + seqlen[idx] - 1
 			HMM:::baumWelchRecursion(hmm, obs[s:e])$TransitionMatrix
 		})
 		their_exptrans <- prop.table(Reduce("+", transList),1)
 		#get their total log-likelihood
 		their_llik <- sum(sapply(1:length(seqlen), function(idx){
-			s <- seqstart[idx] + 1
+			s <- seqstart[idx]
 			e <- s + seqlen[idx] - 1
 			f <- HMM:::forward(hmm, obs[s:e])
 			f_lastcol <- f[,ncol(f)]
@@ -47,18 +50,22 @@ test_that("hmm functions work",{
 			llik1+llik2
 		}))
 		
-		#get my posteriors
+		#get my posteriors, new initP and new trans
 		llik <- log(t(sapply(1:nstat, function(s){ emissionProbs[s, obs] })))
 		my_post <- matrix(0, nrow=nstat, ncol=sum(seqlen))
 		initP <- matrix(rep(startProbs, length(seqlen)), ncol=length(seqlen))
 		fb <- kfoots:::forward_backward(initP, transProbs, llik, seqlen, my_post)
 		my_exptrans <- fb$new_trans
 		my_llik <- fb$tot_llik
+		my_initP <- fb$new_initP
 		
+		#compare
 		dimnames(my_post) <- dimnames(their_post)
 		expect_equal(my_post, their_post)
 		dimnames(my_exptrans) <- dimnames(their_exptrans)
 		expect_equal(my_exptrans, their_exptrans)
+		dimnames(my_initP) <- dimnames(their_initP)
+		expect_equal(my_initP, their_initP)
 		expect_equal(my_llik, their_llik)
 		
 		#with more threads
@@ -66,16 +73,20 @@ test_that("hmm functions work",{
 		fb <- kfoots:::forward_backward(initP, transProbs, llik, seqlen, my_post, nthreads=20)
 		my_exptrans <- fb$new_trans
 		my_llik <- fb$tot_llik
+		my_initP <- fb$new_initP
 		
+		#compare
 		dimnames(my_post) <- dimnames(their_post)
 		expect_equal(my_post, their_post)
 		dimnames(my_exptrans) <- dimnames(their_exptrans)
 		expect_equal(my_exptrans, their_exptrans)
+		dimnames(my_initP) <- dimnames(their_initP)
+		expect_equal(my_initP, their_initP)
 		expect_equal(my_llik, their_llik)
 		
 		#test the viterbi algorithm
 		vitList <- lapply(1:length(seqlen), function(idx){
-			s <- seqstart[idx] + 1
+			s <- seqstart[idx]
 			e <- s + seqlen[idx] - 1
 			HMM:::viterbi(hmm, obs[s:e])
 		})

@@ -141,8 +141,9 @@ static inline double forward_backward_core(	Mat<double> initPs, Mat<double> tran
 				}
 			}
 			/* set new_initP */
+			double* posterior = posteriors.colptr(chunk_start);
 			for (int r = 0; r < nrow; ++r){
-				new_initP[r] = posteriors[r];
+				new_initP[r] = posterior[r];
 			}
 		}
 		//protected access to the shared variables
