@@ -34,7 +34,7 @@
 #'		\item{viterbi}{see output of \code{viterbi}}
 #' @export
 hmmfoots <- function(counts, k, trans=NULL, initP=NULL, tol = 1e-8, maxiter=100, nthreads=1,
-	nbtype=c("indep","dep","pois"), init=c("rnd","totcount","cool","pca"), init.nlev=5, verbose=FALSE, seqlens=ncol(counts)){
+	nbtype=c("indep","dep","pois"), init=c("rnd","counts","pca"), init.nlev=20, verbose=FALSE, seqlens=ncol(counts)){
 	if (!is.matrix(counts))
 		stop("invalid counts variable provided. It must be a matrix")
 	#this will ensure efficiency of certain methods.
@@ -72,13 +72,11 @@ hmmfoots <- function(counts, k, trans=NULL, initP=NULL, tol = 1e-8, maxiter=100,
 			#get initial random models. Need to be kind-of similar to
 			#the count matrix, cannot be completely random
 			models <- rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
-		} else if (init=="cool" || init=="pca"){
-			init <- initCool(counts, k, nlev=init.nlev, nbtype=nbtype, nthreads=nthreads, axes=ifelse(init=="pca","pca","counts"), verbose=verbose)
+		} else {
+			init <- initAlgo(counts, k, nlev=init.nlev, nbtype=nbtype, nthreads=nthreads, axes=init, verbose=verbose)
 			models <- init$models
 			if (is.null(trans)) trans <- t(sapply(1:k, function(i) init$mix_coeff))
-			if (is.null(trans)) initP <- sapply(1:length(seqlens), function(i) init$mix_coeff)
-		} else {
-			models <- initByTotCount(counts, k, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
+			if (is.null(initP)) initP <- matrix(nrow=k, rep(init$mix_coeff, length(seqlens)))
 		}
 	}
 	if (is.null(trans)) {
@@ -96,7 +94,7 @@ hmmfoots <- function(counts, k, trans=NULL, initP=NULL, tol = 1e-8, maxiter=100,
 		initP <- matrix(initP, ncol=1)
 	} else if (is.matrix(initP) && (nrow(initP)!=k || ncol(initP)!=length(seqlens))){
 		stop("invalid 'initP' matrix provided: one column per sequence and one row per model")
-	} else {
+	} else if (!is.matrix(initP)){
 		stop("'initP' must be a matrix, or a vector if there is only one sequence")
 	}
 	if (any(!compare(colSums(initP), rep(1, ncol(initP)), tol))) stop("'initP' columns must sum up to 1")

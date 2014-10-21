@@ -1,4 +1,4 @@
-context("Array routines")
+context("A: Array routines")
 
 #R EQUIVALENTS TO THE COMPILED C++ FUNCTIONS
 #returns a list with two elements:
@@ -21,7 +21,7 @@ their_mapToUnique <- function(counts){
 
 test_that("Array routines work",{
 	#we don't set the seed here
-	counts <- exampleData(1000, indip=T)
+	counts <- exampleData(1000, indep=T)
 	
 	#mapToUnique
 	their_ucss <- apply(counts, 1, their_mapToUnique)
@@ -42,14 +42,4 @@ test_that("Array routines work",{
 	their_rs <- rowSums(rcounts)
 	my_rs <- rowSumsDouble(rcounts)
 	expect_equal(my_rs, their_rs)
-	
-	#order columns
-	their_o <- do.call(order, as.data.frame(t(counts)))
-	my_o <- orderColumns(counts)
-	expect_identical(my_o, their_o)
-	
-	#find duplicated columns
-	their_dup <- duplicated(counts, MARGIN=2)
-	my_dup <- !uniqueColumns(counts)
-	expect_identical(my_dup, their_dup)
 })

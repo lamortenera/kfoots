@@ -1,4 +1,4 @@
-context("Negative multinomial distribution")
+context("C: Negative multinomial distribution")
 
 #R EQUIVALENTS TO THE COMPILED C++ FUNCTIONS
 their_nmllikfun <- function(counts, model){
@@ -128,7 +128,7 @@ their_fitNMs_1r <- function(counts, wtsmat, tol=1e-9){
 test_that("log likelihood of the NM works",{
 	#create some random data: a 11*1000 matrix of counts
 	set.seed(17)
-	counts <- exampleData(1000, indip=T)
+	counts <- exampleData(1000, indep=T)
 	
 	#test the negative binomial alone first
 	cs <- colSums(counts)
@@ -191,7 +191,7 @@ test_that("log likelihood of the NM works",{
 test_that("fitting the NM works",{
 	#create some random data: a 11*1000 matrix of counts
 	set.seed(71)
-	counts <- exampleData(1000, indip=T)
+	counts <- exampleData(1000, indep=T)
 	
 	#test the negative binomial alone first
 	

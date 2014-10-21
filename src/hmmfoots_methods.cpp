@@ -230,8 +230,8 @@ List viterbi(NumericMatrix initP, NumericMatrix trans, NumericMatrix lliks, Nume
 	int ncol = lliks.ncol();
 	IntegerVector vpath(ncol);
 	IntegerMatrix backtrack(nmod, max(seqlens));
-	NumericVector scores(nmod);
-	NumericVector new_scores(nmod);
+	std::vector<long double> scores(nmod);
+	std::vector<long double> new_scores(nmod);
 	
 	/* log-transform the transition probabilities */
 	NumericMatrix ltrans(nmod,nmod);
@@ -244,7 +244,13 @@ List viterbi(NumericMatrix initP, NumericMatrix trans, NumericMatrix lliks, Nume
 	for (int o = 0, chunk_start = 0; o < seqlens.length(); chunk_start += seqlens[o], ++o){
 		int chunk_end = chunk_start + seqlens[o];
 		/* dynamic programming */
-		scores = lliks.column(chunk_start) + log(initP.column(o));
+		{
+			MatrixColumn<REALSXP> llikcol = lliks.column(chunk_start);
+			MatrixColumn<REALSXP> curr_initP = initP.column(o);
+			for (int t = 0; t < nmod; ++t){
+				scores[t] = llikcol[t] + log(curr_initP[t]);
+			}
+		}
 		for (int i = chunk_start + 1; i < chunk_end; ++i){
 			
 			MatrixColumn<REALSXP> llikcol = lliks.column(i);
@@ -252,9 +258,9 @@ List viterbi(NumericMatrix initP, NumericMatrix trans, NumericMatrix lliks, Nume
 			
 			for (int t = 0; t < nmod; ++t){
 				int maxs = 0;
-				double maxscore = scores[0] + ltrans(0, t);
+				long double maxscore = scores[0] + ltrans(0, t);
 				for (int s = 1; s < nmod; ++s){
-					double currscore = scores[s] + ltrans(s,t);
+					long double currscore = scores[s] + ltrans(s,t);
 					if (currscore > maxscore){
 						maxscore = currscore;
 						maxs = s;
@@ -264,7 +270,7 @@ List viterbi(NumericMatrix initP, NumericMatrix trans, NumericMatrix lliks, Nume
 				new_scores[t] = llikcol[t] + maxscore;
 			}
 			
-			memcpy(scores.begin(), new_scores.begin(), sizeof(double)*nmod);
+			memcpy(scores.data(), new_scores.data(), sizeof(long double)*nmod);
 		}
 		
 		/* backtracking */
@@ -286,10 +292,11 @@ List viterbi(NumericMatrix initP, NumericMatrix trans, NumericMatrix lliks, Nume
 	return List::create(_("vpath")=vpath, _("vllik")=tot_maxscore);
 }
 
-
+/*
 // [[Rcpp::export]]
 Rcpp::IntegerVector orderColumns(Rcpp::IntegerMatrix mat){
 	Rcpp::IntegerVector order(mat.ncol());
 	orderColumns_core(asMat(mat), asVec(order));
 	return order;
 }
+*/

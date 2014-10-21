@@ -259,12 +259,11 @@ Rcpp::List clusterAverages(Rcpp::IntegerMatrix counts, Rcpp::List clusters, int 
 //}
 
 // [[Rcpp::export]]
-void fillPosteriors(Rcpp::IntegerMatrix coords, Rcpp::List clusters, Rcpp::NumericMatrix posteriors, int nthreads=1){
+Rcpp::NumericMatrix fillPosteriors(Rcpp::IntegerMatrix coords, Rcpp::List clusters, int nclust, int nthreads=1){
 	int ncomp = coords.nrow();
 	int ncol = coords.ncol();
 	if (ncomp != clusters.length()) Rcpp::stop("one set of clusters for each row of the count matrix is required");
-	if (ncol != posteriors.ncol()) Rcpp::stop("posteriors matrix doesn't match with the count matrix");
-	int nclust = posteriors.nrow();
+	Rcpp::NumericMatrix posteriors(nclust, ncol);
 	
 	//switch to the std::vector of Rcpp::vector format
 	std::vector<Rcpp::IntegerVector> Cs;
@@ -286,6 +285,8 @@ void fillPosteriors(Rcpp::IntegerMatrix coords, Rcpp::List clusters, Rcpp::Numer
 			++pcol[clust];
 		}
 	}
+	
+	return posteriors;
 }
 
 template<typename TVec1, typename TVec2, typename TCoeff>
@@ -299,8 +300,13 @@ inline void addAllCols(int n, TVec1 v1, TVec2 v2){
 }
 
 
+//computes the pairwise dot-product between any pair of rows and 
+//divides it by the total number of rows (-1 if besselCorr==true)
+//in R: 
+//(counts %*% t(counts)) / (nrow(counts)-1)
+
 // [[Rcpp::export]]
-Rcpp::NumericMatrix rowcov(Rcpp::NumericMatrix counts, bool besselCorr=true, int nthreads=1){
+Rcpp::NumericMatrix rowdotprod(Rcpp::NumericMatrix counts, bool besselCorr=true, int nthreads=1){
 	int ncol = counts.ncol();
 	int nrow = counts.nrow();
 	std::vector<long double> std_cov(nrow*nrow);
@@ -453,11 +459,11 @@ Rcpp::IntegerMatrix splitAxes(Rcpp::NumericMatrix scores, int nsplit, int nthrea
 		//sort it
 		__gnu_parallel::sort(avatars.begin(), avatars.end(), __gnu_parallel::parallel_tag(nthreads));
 		//fill in the matrix
-		double denom = ncol;
+		double mult = nsplit/((double)ncol);
 		#pragma omp parallel for num_threads(nthreads)
 		for (int i = 0; i < ncol; ++i){
 			int a = avatars[i].second;
-			matrow[a] = floor(nsplit*(i/denom));
+			matrow[a] = floor(i*mult);
 		}
 	}
 	
@@ -465,6 +471,7 @@ Rcpp::IntegerMatrix splitAxes(Rcpp::NumericMatrix scores, int nsplit, int nthrea
 	return mat;
 }
 
+//same as before, but with count sort
 // [[Rcpp::export]]
 Rcpp::IntegerMatrix splitAxesInt(Rcpp::IntegerMatrix scores, int nsplit, int nthreads=1){
 	int nrow = scores.nrow();
@@ -490,13 +497,110 @@ Rcpp::IntegerMatrix splitAxesInt(Rcpp::IntegerMatrix scores, int nsplit, int nth
 			acc += tmp;
 		}
 		//fill in mat
-		double denom = ncol;
+		double mult = nsplit/((double)ncol);
 		for (int i = 0; i < ncol; ++i){
 			int pos = tab[scrow[i]]++;
-			matrow[i] = floor(nsplit*(pos/denom));
+			matrow[i] = floor(mult*pos);
 		}
 	}
 	
 	mat.attr("dimnames") = scores.attr("dimnames");
 	return mat;
+}
+
+//kullback-leibler divergence between negative multinomial mus1 and negative multinomial mus2
+double KL_div(double* mus1, double* mus2, double r, int len){
+	double logRatioSum = 0; //sum of mus1[i]*log(mus1[i]/mus2[i])
+	double mu1 = 0;
+	double mu2 = 0;
+	for (int i = 0; i < len; ++i){
+		mu1 += mus1[i];
+		mu2 += mus2[i];
+		if (mus1[i] > 0){
+			if (mus2[i] == 0){
+				logRatioSum += std::numeric_limits<double>::infinity();
+			} else {
+				logRatioSum += mus1[i]*log(mus1[i]/mus2[i]);
+			}
+		}
+	}
+	if (!R_FINITE(r)) {//poisson case
+		return mu2 - mu1 + logRatioSum;
+	} else {//negative binomial case
+		return (mu1 + r)*log((mu2 + r)/(mu1 + r)) + logRatioSum;
+	}
+}
+
+bool allPos(Rcpp::NumericVector v){
+	for (int i = 0, e = v.length(); i < e; ++i){
+		if (v[i] < 0) return false;
+	}
+	return true;
+}
+
+//compute symmetric kullback leibler divergence between all pairs of negative multinomials
+
+// [[Rcpp::export]]
+Rcpp::NumericMatrix KL_dist_mat(Rcpp::NumericMatrix nbs1, Rcpp::NumericMatrix nbs2, double r){
+	//check that the number of rows match
+	if (nbs1.nrow() != nbs2.nrow()) Rcpp::stop("the two matrices must have the same number of rows");
+	//check that all elements are positive
+	if (!allPos(nbs1) || !allPos(nbs2)) Rcpp::stop("the two matrices cannot contain negative numbers");
+	//check that r is positive
+	if (r <= 0) Rcpp::stop("r must be strictly positive");
+	
+	int nrow = nbs1.nrow();
+	int ncol1 = nbs1.ncol();
+	int ncol2 = nbs2.ncol();
+	Rcpp::NumericMatrix dmat(ncol1, ncol2);
+	for (int i = 0; i < ncol1; ++i){
+		for (int j = 0; j < ncol2; ++j){
+			double* mus1 = nbs1.column(i).begin();
+			double* mus2 = nbs2.column(j).begin();
+			dmat(i,j) = (KL_div(mus1, mus2, r, nrow) + KL_div(mus2, mus1, r, nrow))*0.5;
+		}
+	}
+	return dmat;
+}
+
+unsigned hashVec(Vec<int> v){
+	std::hash<int> hasher;
+	unsigned hashSum = 0;
+	int len = v.len;
+	for (int i = 0; i < len; ++i){
+		hashSum += hasher(v[i]);
+	}
+	return hashSum;
+}
+
+bool sameVec(Vec<int> v1, Vec<int> v2){
+	if (v1.len != v2.len) return false;
+	for (int i = 0, e = v1.len; i < e; ++i){
+		if (v1[i] != v2[i]) return false;
+	}
+	return true;
+}
+
+//permutation should be a permutation of the numbers from 1 to ncol(counts), 
+//it can be created in R by doing: sample(ncol(counts), ncol(counts))
+// [[Rcpp::export]]
+Rcpp::IntegerVector findUniqueSeeds(Rcpp::IntegerMatrix counts, Rcpp::IntegerVector permutation, int k){
+	if (counts.ncol() != permutation.length()) Rcpp::stop("matrix and permutation don't match");
+	int ncol = counts.ncol();
+	Mat<int> mat = asMat(counts);
+	//finding the seeds
+	typedef std::unordered_map<Vec<int>, int, std::function<unsigned(Vec<int>)>,std::function<bool(Vec<int>,Vec<int>)> > Maptype; 
+	Maptype map(2*k, hashVec, sameVec);
+	for (int i = 0; i < ncol && map.size() < (unsigned)k; ++i){
+		map[mat.getCol(permutation[i]-1)] = permutation[i];
+	}
+	if (map.size() < (unsigned)k) Rcpp::stop("unable to find enough distinct columns");
+	//writing them in a new vector
+	Rcpp::IntegerVector seeds(k);
+	typedef Maptype::iterator Mapiter;
+	int pos = 0;
+	for (Mapiter s = map.begin(), e = map.end(); s != e; ++s, ++pos){
+		seeds[pos] = s->second;
+	}
+	return seeds;
 }

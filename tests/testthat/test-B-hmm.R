@@ -1,4 +1,4 @@
-context("HMM and mixture models")
+context("B: HMM and mixture models")
 
 #generate a random vector of length l
 #such that the values (all non-negative) sum up to 1
@@ -7,11 +7,60 @@ rndPS <- function(l){
 	ps/sum(ps)
 }
 
+if (require("HMM")){
+	#this is copy and pasted from the viterbi function 
+	#in the package HMM. Only the last line is modified to return
+	#also the loglikelihood of the viterbi path
+	HMM__viterbi <- function(hmm, observation){
+		hmm$transProbs[is.na(hmm$transProbs)] = 0
+		hmm$emissionProbs[is.na(hmm$emissionProbs)] = 0
+		nObservations = length(observation)
+		nStates = length(hmm$States)
+		v = array(NA, c(nStates, nObservations))
+		dimnames(v) = list(states = hmm$States, index = 1:nObservations)
+		for (state in hmm$States) {
+				v[state, 1] = log(hmm$startProbs[state] * hmm$emissionProbs[state, 
+						observation[1]])
+		}
+		for (k in 2:nObservations) {
+				for (state in hmm$States) {
+						maxi = NULL
+						for (previousState in hmm$States) {
+								temp = v[previousState, k - 1] + log(hmm$transProbs[previousState, 
+									state])
+								maxi = max(maxi, temp)
+						}
+						v[state, k] = log(hmm$emissionProbs[state, observation[k]]) + 
+								maxi
+				}
+		}
+		viterbiPath = rep(NA, nObservations)
+		for (state in hmm$States) {
+				if (max(v[, nObservations]) == v[state, nObservations]) {
+						viterbiPath[nObservations] = state
+						break
+				}
+		}
+		for (k in (nObservations - 1):1) {
+				for (state in hmm$States) {
+						if (max(v[, k] + log(hmm$transProbs[, viterbiPath[k + 
+								1]])) == v[state, k] + log(hmm$transProbs[state, 
+								viterbiPath[k + 1]])) {
+								viterbiPath[k] = state
+								break
+						}
+				}
+		}
+		
+		list(vpath=viterbiPath, vllik=max(v[,nObservations]))
+	}
+}
+
 test_that("hmm functions work",{
 	if (require("HMM")){
 		nstat <- 10
 		nsymb <- 10
-		seqlen <- c(1000, 100, 10)
+		seqlen <- c(500, 100, 10)
 		#make the HMM object
 		States <- paste0("state_", 1:nstat)
 		Symbols <- paste0("symbol_", 1:nsymb)
@@ -88,16 +137,20 @@ test_that("hmm functions work",{
 		vitList <- lapply(1:length(seqlen), function(idx){
 			s <- seqstart[idx]
 			e <- s + seqlen[idx] - 1
-			HMM:::viterbi(hmm, obs[s:e])
+			HMM__viterbi(hmm, obs[s:e])
 		})
-		their_viterbi <- unlist(vitList)
+		their_viterbi <- list(vpath=c(), vllik=0)
+		for (vit in vitList) {
+			their_viterbi$vpath <- c(their_viterbi$vpath, vit$vpath)
+			their_viterbi$vllik <- their_viterbi$vllik + vit$vllik
+		}
 		#convert characters to state numbers
 		transf <- 1:nstat; names(transf) <- States
-		their_viterbi <- transf[their_viterbi]; names(their_viterbi) <- NULL
+		their_viterbi$vpath <- transf[their_viterbi$vpath]; names(their_viterbi$vpath) <- NULL
 		llik <- log(t(sapply(1:nstat, function(s){ emissionProbs[s, obs] })))
-		my_viterbi <- kfoots:::viterbi(initP, transProbs, llik, seqlen)$vpath
+		my_viterbi <- kfoots:::viterbi(initP, transProbs, llik, seqlen)
 		
-		expect_identical(my_viterbi, their_viterbi)
+		expect_equal(my_viterbi, their_viterbi)
 	}
 })
 

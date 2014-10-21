@@ -115,7 +115,7 @@ kfoots_wrapper <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
 #'			whole dataset across iterations}
 #' @export
 kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=1,
-	nbtype=c("indep","dep","pois"), init=c("rnd","totcount","cool","pca"), init.nlev=5, verbose=FALSE){
+	nbtype=c("indep","dep","pois"), init=c("rnd","counts","pca"), init.nlev=20, verbose=FALSE){
 	if (verbose)
 		cat("kfoots with ", nthreads, " threads\n")
 	
@@ -150,12 +150,10 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=
 		#the count matrix, cannot be completely random
 		if (init=="rnd"){
 			models <- rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
-		} else if (init=="cool" || init=="pca"){
-			init <- initCool(counts, k, nlev=init.nlev, nbtype=nbtype, nthreads=nthreads, axes=ifelse(init=="pca","pca","counts"), verbose=verbose)
+		} else {
+			init <- initAlgo(counts, k, nlev=init.nlev, nbtype=nbtype, nthreads=nthreads, axes=init, verbose=verbose)
 			models <- init$models
 			mix_coeff <- init$mix_coeff
-		} else {
-			models <- initByTotCount(counts, k, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
 		}
 	}
 	if (is.null(mix_coeff)){
@@ -323,7 +321,7 @@ generateIndependentData <- function(n, models, mix_coeff){
 	mat
 }
 
-exampleData <- function(n=10000, indip=FALSE){
+exampleData <- function(n=10000, indep=FALSE){
 	m1 = list(mu=40, r=0.4, ps=c(1,8,5,8,5,6,5,4,3,2,1))
 	m2 = list(mu=20, r=2, ps=c(1,1,1,1,1,3,4,5,6,5,4))
 	m1$ps = m1$ps/sum(m1$ps)
@@ -331,7 +329,7 @@ exampleData <- function(n=10000, indip=FALSE){
 	p1 = 0.3
 	p2 = 0.7
 	
-	if (indip)
+	if (indep)
 		generateIndependentData(n, list(m1, m2), c(p1,p2))
 	else
 		generateData(n, list(m1, m2), c(p1,p2))

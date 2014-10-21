@@ -40,10 +40,6 @@ viterbi <- function(initP, trans, lliks, seqlens) {
     .Call('kfoots_viterbi', PACKAGE = 'kfoots', initP, trans, lliks, seqlens)
 }
 
-orderColumns <- function(mat) {
-    .Call('kfoots_orderColumns', PACKAGE = 'kfoots', mat)
-}
-
 tabFast <- function(counts) {
     .Call('kfoots_tabFast', PACKAGE = 'kfoots', counts)
 }
@@ -68,12 +64,12 @@ clusterAverages <- function(counts, clusters, nthreads = 1L) {
     .Call('kfoots_clusterAverages', PACKAGE = 'kfoots', counts, clusters, nthreads)
 }
 
-fillPosteriors <- function(coords, clusters, posteriors, nthreads = 1L) {
-    invisible(.Call('kfoots_fillPosteriors', PACKAGE = 'kfoots', coords, clusters, posteriors, nthreads))
+fillPosteriors <- function(coords, clusters, nclust, nthreads = 1L) {
+    .Call('kfoots_fillPosteriors', PACKAGE = 'kfoots', coords, clusters, nclust, nthreads)
 }
 
-rowcov <- function(counts, besselCorr = TRUE, nthreads = 1L) {
-    .Call('kfoots_rowcov', PACKAGE = 'kfoots', counts, besselCorr, nthreads)
+rowdotprod <- function(counts, besselCorr = TRUE, nthreads = 1L) {
+    .Call('kfoots_rowdotprod', PACKAGE = 'kfoots', counts, besselCorr, nthreads)
 }
 
 matprod <- function(mat1, mat2, mat3, nthreads = 1L) {
@@ -90,6 +86,14 @@ splitAxes <- function(scores, nsplit, nthreads = 1L) {
 
 splitAxesInt <- function(scores, nsplit, nthreads = 1L) {
     .Call('kfoots_splitAxesInt', PACKAGE = 'kfoots', scores, nsplit, nthreads)
+}
+
+KL_dist_mat <- function(nbs1, nbs2, r) {
+    .Call('kfoots_KL_dist_mat', PACKAGE = 'kfoots', nbs1, nbs2, r)
+}
+
+findUniqueSeeds <- function(counts, permutation, k) {
+    .Call('kfoots_findUniqueSeeds', PACKAGE = 'kfoots', counts, permutation, k)
 }
 
 llik2posteriors <- function(lliks, mix_coeff, posteriors, nthreads = 1L) {

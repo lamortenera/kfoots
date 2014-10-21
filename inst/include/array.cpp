@@ -380,6 +380,7 @@ static void colSums(SWMat<TNumMat> mat, Vec<TNumVec> vec, int nthreads){
 
 /* sorting columns of a matrix */
 
+/*
 struct colPtr {
 	int* ptr;
 	int colref;
@@ -415,6 +416,7 @@ static inline void orderColumns_core(Mat<int> mat, Vec<int> vec){
 	std::sort(cols.begin(), cols.end(), srtr);
 	for (int i = 0; i < nc; ++i){vec[i] = cols[i].colref+1;}
 }
+*/
 
 /* getting the row index with the maximum element for every column */
 
@@ -448,7 +450,7 @@ static inline void pwhichmax_core(Mat<double> posteriors, Vec<int> clusters, int
 	be split in smaller adjacent ones, and starts become 0-indexed.
 	breaks and scorebreaks at the beginning are empty vectors, at the end
 	they represent the starts and end of each group.
-*/
+
 
 static inline void splitForThreads(
 										Vec<int> starts,
@@ -507,3 +509,4 @@ static inline void splitForThreads(
 	}
 }
 
+*/

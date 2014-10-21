@@ -43,21 +43,6 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
-// orderColumns
-Rcpp::IntegerVector orderColumns(Rcpp::IntegerMatrix mat);
-RcppExport SEXP kfoots_orderColumns(SEXP matSEXP) {
-BEGIN_RCPP
-    SEXP __sexp_result;
-    {
-        Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type mat(matSEXP );
-        Rcpp::IntegerVector __result = orderColumns(mat);
-        PROTECT(__sexp_result = Rcpp::wrap(__result));
-    }
-    UNPROTECT(1);
-    return __sexp_result;
-END_RCPP
-}
 // tabFast
 Rcpp::IntegerVector tabFast(Rcpp::IntegerVector counts);
 RcppExport SEXP kfoots_tabFast(SEXP countsSEXP) {
@@ -157,23 +142,26 @@ BEGIN_RCPP
 END_RCPP
 }
 // fillPosteriors
-void fillPosteriors(Rcpp::IntegerMatrix coords, Rcpp::List clusters, Rcpp::NumericMatrix posteriors, int nthreads = 1);
-RcppExport SEXP kfoots_fillPosteriors(SEXP coordsSEXP, SEXP clustersSEXP, SEXP posteriorsSEXP, SEXP nthreadsSEXP) {
+Rcpp::NumericMatrix fillPosteriors(Rcpp::IntegerMatrix coords, Rcpp::List clusters, int nclust, int nthreads = 1);
+RcppExport SEXP kfoots_fillPosteriors(SEXP coordsSEXP, SEXP clustersSEXP, SEXP nclustSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
+    SEXP __sexp_result;
     {
         Rcpp::RNGScope __rngScope;
         Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type coords(coordsSEXP );
         Rcpp::traits::input_parameter< Rcpp::List >::type clusters(clustersSEXP );
-        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type posteriors(posteriorsSEXP );
+        Rcpp::traits::input_parameter< int >::type nclust(nclustSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        fillPosteriors(coords, clusters, posteriors, nthreads);
+        Rcpp::NumericMatrix __result = fillPosteriors(coords, clusters, nclust, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
-    return R_NilValue;
+    UNPROTECT(1);
+    return __sexp_result;
 END_RCPP
 }
-// rowcov
-Rcpp::NumericMatrix rowcov(Rcpp::NumericMatrix counts, bool besselCorr = true, int nthreads = 1);
-RcppExport SEXP kfoots_rowcov(SEXP countsSEXP, SEXP besselCorrSEXP, SEXP nthreadsSEXP) {
+// rowdotprod
+Rcpp::NumericMatrix rowdotprod(Rcpp::NumericMatrix counts, bool besselCorr = true, int nthreads = 1);
+RcppExport SEXP kfoots_rowdotprod(SEXP countsSEXP, SEXP besselCorrSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
@@ -181,7 +169,7 @@ BEGIN_RCPP
         Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type counts(countsSEXP );
         Rcpp::traits::input_parameter< bool >::type besselCorr(besselCorrSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        Rcpp::NumericMatrix __result = rowcov(counts, besselCorr, nthreads);
+        Rcpp::NumericMatrix __result = rowdotprod(counts, besselCorr, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);
@@ -248,6 +236,40 @@ BEGIN_RCPP
         Rcpp::traits::input_parameter< int >::type nsplit(nsplitSEXP );
         Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
         Rcpp::IntegerMatrix __result = splitAxesInt(scores, nsplit, nthreads);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// KL_dist_mat
+Rcpp::NumericMatrix KL_dist_mat(Rcpp::NumericMatrix nbs1, Rcpp::NumericMatrix nbs2, double r);
+RcppExport SEXP kfoots_KL_dist_mat(SEXP nbs1SEXP, SEXP nbs2SEXP, SEXP rSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type nbs1(nbs1SEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type nbs2(nbs2SEXP );
+        Rcpp::traits::input_parameter< double >::type r(rSEXP );
+        Rcpp::NumericMatrix __result = KL_dist_mat(nbs1, nbs2, r);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// findUniqueSeeds
+Rcpp::IntegerVector findUniqueSeeds(Rcpp::IntegerMatrix counts, Rcpp::IntegerVector permutation, int k);
+RcppExport SEXP kfoots_findUniqueSeeds(SEXP countsSEXP, SEXP permutationSEXP, SEXP kSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
+        Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type permutation(permutationSEXP );
+        Rcpp::traits::input_parameter< int >::type k(kSEXP );
+        Rcpp::IntegerVector __result = findUniqueSeeds(counts, permutation, k);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);

@@ -2,24 +2,6 @@ dog <- function(verbose=T, ...){
 	if (verbose) cat("[init]", ..., "\n")
 }
 
-#kullback-leibler divergence of two negative multinomials with marginal means mus1 and mus2
-#r is the same for both distributions
-#that's a non-symmetric distance, it's the distance from mus1 to mus2
-#vectorized on the second argument
-kldiv <- function(mus1, mus2, r=Inf){
-	if (!is.matrix(mus2)) dim(mus2) <- c(length(mus2), 1)
-	ratioTerm <- mus1*log(mus1/mus2)
-	ratioTerm[mus1==0] <- 0
-	ratioTerm[mus1>0&mus2==0] <- Inf
-	if (r==Inf){
-		return(colSums(mus2-mus1+ratioTerm))
-	} else {
-		mu1 <- sum(mus1)
-		mu2 <- colSums(mus2)
-		return((mu1+r)*log((mu2+r)/(mu1+r)) + colSums(ratioTerm))
-	}
-}
-
 tpca <- function(counts, center=T, scale=F, besselCorr=T, nthreads=1){
 	#only the covariance computation is parallelized, unfortunately
 	if (center) {
@@ -31,7 +13,7 @@ tpca <- function(counts, center=T, scale=F, besselCorr=T, nthreads=1){
 		ctr <- F
 		dccounts <- counts; storage.mode(dccounts) <- "double"
 	}
-	mycov <- rowcov(dccounts, besselCorr=besselCorr, nthreads=nthreads)
+	mycov <- rowdotprod(dccounts, besselCorr=besselCorr, nthreads=nthreads)
 	rownames(mycov) <- rownames(counts)
 	colnames(mycov) <- rownames(counts)
 	if (scale) {
@@ -60,7 +42,7 @@ tpca <- function(counts, center=T, scale=F, besselCorr=T, nthreads=1){
 }
 
 #pprior makes everything as if when we observe column i, we observe column i 1-pprior times and pprior times another random column
-initCool <- function(counts, k, nlev=5, nthreads=1, nbtype=c("indep", "dep", "pois"), axes=c("counts", "pca"), pprior=0.01, verbose=F){
+initAlgo <- function(counts, k, nlev=5, nthreads=1, nbtype=c("indep", "dep", "pois"), axes=c("counts", "pca"), pprior=0.01, verbose=F){
 	axes <- match.arg(axes)
 	nbtype <- match.arg(nbtype)
 	#nlev says how many cuts we should do per axis
@@ -106,9 +88,7 @@ initCool <- function(counts, k, nlev=5, nthreads=1, nbtype=c("indep", "dep", "po
 	ucs <- mapToUnique(colSumsInt(counts, nthreads))
 	if (nbtype=="indep" || nbtype=="dep") r <- fitNB(ucs)$r
 	dog("computing KL divergences", v=verbose)
-	dmat <- apply(mus, 2, kldiv, mus2=mus, r=r)
-	#symmetrized kl divergence
-	dmat <- (dmat + t(dmat))/2
+	dmat <- KL_dist_mat(mus, mus, r)
 	#do hierarchical clustering
 	dog("hierarchical clustering", v=verbose)
 	hc <- hclust(as.dist(dmat), method="average", members=sizes)
@@ -121,8 +101,7 @@ initCool <- function(counts, k, nlev=5, nthreads=1, nbtype=c("indep", "dep", "po
 	csizes <- sumAt(sizes, clust, k, F)
 	#prepare posterior matrix
 	dog("filling in posterior matrix", v=verbose)
-	posteriors <- matrix(0, nrow=k, ncol=ncol(counts)) 
-	fillPosteriors(coords, multidclust, posteriors, nthreads)
+	posteriors <- fillPosteriors(coords, multidclust, k, nthreads)
 	priorcol <- csizes/ncol(counts)
 	posteriors <- (1-pprior)*posteriors + pprior*priorcol
 	#fit models
@@ -137,43 +116,6 @@ initCool <- function(counts, k, nlev=5, nthreads=1, nbtype=c("indep", "dep", "po
 	list(models=models, mix_coeff=mix_coeff)
 }
 
-#to be parallelized, or avoid iteration through the whole matrix
-initByTotCount <- function(counts, k, ucs=NULL, nbtype="indep", nthreads=1){
-	cs <- colSumsInt(counts, nthreads)
-	#the basic idea is to divide the counts into quantiles and to set each cluster to a different quantile
-	#but we want to detect the "zero-inflated" component, if present, and set it to a cluster
-	#it is present if the abundance of 'zeros' is higher than the abundance of 'ones'
-	#if this is the case, one cluster will consist of only zeros and ones
-	tab <- tabFast(cs)#abundance of each count
-	if (length(tab) > 2 && tab[1] > tab[2] && (length(cs) - sum(tab[1:2]) > k-1)) {
-		p1 <- sum(tab[1:2])/length(cs) #portion of counts corresponding to the 'zero-inflated' mode
-	} else {
-		p1 <- 1/k
-	}
-	ps <- c(p1, rep((1-p1)/(k-1), k-1))
-	qs <- cumsum(c(0, ps))
-	#perturb cs to resolve ties 
-	set.seed(17)
-	cs <- cs + rnorm(length(cs), sd=0.001)
-	#get thresholds
-	thresh <- quantile(cs, qs)
-	#get cluster assignments
-	thresh[length(thresh)] <- thresh[length(thresh)] + 1 #to include rightmost point in the last cluster
-	f <- as.integer(cut(cs, thresh, right=F))
-	#check that there is at least one datapoint for each cluster
-	check <- tabFast(f)
-	if (any(check[2:length(check)] == 0)) stop("initialization by total count failed (too few columns? too many models?)")
-	
-	#get posteriors
-	posteriors <- matrix(0, nrow=k, ncol=length(cs))
-	posteriors[k*(0:(length(cs)-1)) + f] <- 1
-	
-	models <- list()
-	for (i in 1:k){ models[[i]] <- list(mu=-1, r=-1, ps=numeric(nrow(counts))) }
-	
-	fitModels(counts, posteriors, models, ucs=ucs, type=nbtype, nthreads=nthreads)
-}
-
 
 #to be parallelized, or avoid iteration through the whole matrix
 rndModels <- function(counts, k, bgr_prior=0.5, ucs=NULL, nbtype="indep", nthreads=1){
@@ -184,7 +126,6 @@ rndModels <- function(counts, k, bgr_prior=0.5, ucs=NULL, nbtype="indep", nthrea
 #seeds are columns of the count matrix which are guaranteed to be distinct.
 #they are used to initialize the models
 modelsFromSeeds <- function(counts, seeds, bgr_prior=0.5, ucs=NULL, nbtype="indep", nthreads=1){
-	
 	posteriors <- matrix(nrow=length(seeds), ncol=ncol(counts), bgr_prior)
 	#perturb row i at column seeds[i]
 	perturb_pos <- seeds*length(seeds) + 1:length(seeds)
@@ -197,51 +138,8 @@ modelsFromSeeds <- function(counts, seeds, bgr_prior=0.5, ucs=NULL, nbtype="inde
 	fitModels(counts, posteriors, models, ucs=ucs, type=nbtype, nthreads=nthreads)
 }
 
-#find k unique seeds as fast as possible given that "counts" could be huge.
-#It sorts increasing subsets of the counts matrix until it finds a sufficient
-#number of unique elements
+#find k unique columns in the count matrix
 getUniqueSeeds <- function(counts, k){
-	#shuffle the matrix, dupicated columns are likely to be adjacent
 	shuffle <- sample(ncol(counts), ncol(counts))
-	if (k==1)
-		return(shuffle[1])
-		
-	#duplicate the size of the sorted matrix every time
-	old_size <- 0
-	size <- k
-	unique_cols <- c()
-	
-	while (old_size < ncol(counts)){
-		#concatenate the old ones with the new ones
-		newcols <- shuffle[(old_size+1):size]
-		new_unique_cols <- newcols[uniqueColumns(counts[,newcols, drop=FALSE])]
-		unique_cols <- c(unique_cols, new_unique_cols)
-		#check if there are duplicates (merge the two sets)
-		if (length(unique_cols)>1) 
-			unique_cols <- unique_cols[uniqueColumns(counts[,unique_cols, drop=FALSE])]
-		
-		if (length(unique_cols)>=k)
-			return (unique_cols[1:k])
-		
-		old_size <- size
-		size <- min(2*size, ncol(counts))
-	}
-	stop(paste("At least",k,"distinct columns are needed, found",length(unique_cols)))
+	findUniqueSeeds(counts, shuffle, k)
 }
-
-#return indices of first occurrences of all unique columns in the matrix
-#(it's 15 times faster than duplicated(counts, MARGIN=2) but it does the same)
-uniqueColumns <- function(counts){
-	nc <- ncol(counts)
-	nr <- nrow(counts)
-	#lexicographic sorting of the columns (loci)
-	o <- orderColumns(counts)
-	io <- (1:length(o))[o]
-	counts <- counts[,o, drop=FALSE]
-	#identify runs of identical columns
-	d <- .colSums(abs(counts - counts[, c(1, 1:(nc-1)), drop=FALSE]), nr, nc)>0
-	d[1] <- TRUE
-	#get leading indexes positions
-	io[(1:nc)[d]]
-}
-
