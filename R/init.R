@@ -88,7 +88,7 @@ initAlgo <- function(counts, k, nlev=5, nthreads=1, nbtype=c("indep", "dep", "po
 	ucs <- mapToUnique(colSumsInt(counts, nthreads))
 	if (nbtype=="indep" || nbtype=="dep") r <- fitNB(ucs)$r
 	dog("computing KL divergences", v=verbose)
-	dmat <- KL_dist_mat(mus, mus, r)
+	dmat <- KL_dist_mat(mus, r, nthreads=nthreads)
 	#do hierarchical clustering
 	dog("hierarchical clustering", v=verbose)
 	hc <- hclust(as.dist(dmat), method="average", members=sizes)

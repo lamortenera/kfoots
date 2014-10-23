@@ -4,6 +4,31 @@
 #include <R_ext/BLAS.h>
 #include <parallel/algorithm>
 
+//splits the range [0, len) into nthreads ranges of approximately same size
+//the ith range is [breaks[i], breaks[i+1])
+std::vector<int> makeBreaks(int len, int nthreads){
+	std::vector<int> breaks(nthreads+1);
+	double denom = (double)nthreads;
+	for (int i = 0; i <= nthreads; ++i){ 
+		breaks[i] = round((i/denom)*len); 
+	}
+	return breaks;
+}
+
+//computes the kth pair (i,j) such that j<=i (or j < i if noDiag is true)
+//the sequence of pairs looks like this: (0,0), (1,0), (1,1), (2,0), (2,1), (2,2), ...
+inline void kthPair(int k, int& i, int& j, bool noDiag=false){
+	i = (int)((-1 + sqrt(1 + 8*k))*0.5);
+	j = k - (i*(i+1))/2;
+	if (noDiag) ++i;
+}
+
+//computes the total number of unique unordered pairs (i,j)
+//if noDiag==true, then it excludes the pairs s.t. i==j
+inline int nPairs(int n, bool noDiag=false){
+	if (noDiag) --n;
+	return (n*(n+1))/2;
+}
 
 //TABBING FUNCTIONS: they perform something similar to table(v) in R, where v is
 //an integer vector, with 2 differences:
@@ -37,27 +62,12 @@ Rcpp::IntegerVector tabFast(Rcpp::IntegerVector counts){
 	return Rcpp::wrap(tab);
 }
 
-//equivalent to apply(counts, 2, tabFast)
-// [[Rcpp::export]]
-Rcpp::List tabCols(Rcpp::IntegerMatrix counts, int nthreads=1){
-	int ncol = counts.ncol();
-	nthreads = std::min(ncol, nthreads);
-	std::vector<std::vector<int>> result(ncol);
-	#pragma omp parallel for num_threads(nthreads)
-	for (int i = 0; i < ncol; ++i){
-		Rcpp::MatrixColumn<INTSXP> col = counts.column(i);
-		result[i].resize(100);
-		tabFast_impl(col.begin(), col.end(),result[i]);
-	}
-	return Rcpp::wrap(result);
-}
 //equivalent to apply(counts, 1, tabFast)
-// [[Rcpp::export]]
-Rcpp::List tabRows(Rcpp::IntegerMatrix counts, int nthreads=1){
+std::vector<std::vector<int> > tabRows(Rcpp::IntegerMatrix counts, int nthreads=1){
 	int nrow = counts.nrow();
 	int ncol = counts.ncol();
 	nthreads = std::min(nrow, nthreads);
-	std::vector<std::vector<int>> result(nrow);
+	std::vector<std::vector<int> > result(nrow);
 	for (int i = 0; i < nrow; ++i) result[i].resize(100);
 	int chunkSize = 1e5/nrow;
 	int chunkStart = 0;
@@ -73,7 +83,7 @@ Rcpp::List tabRows(Rcpp::IntegerMatrix counts, int nthreads=1){
 	
 	for (int i = 0; i < nrow; ++i) shrink(result[i]);
 	
-	return Rcpp::wrap(result);
+	return result;
 }
 
 //END TABBING FUNCTIONS
@@ -481,17 +491,19 @@ Rcpp::IntegerMatrix splitAxesInt(Rcpp::IntegerMatrix scores, int nsplit, int nth
 	Rcpp::IntegerMatrix mat(nrow, ncol);
 	
 	//tabulate the values for each row
-	Rcpp::List tabs = tabRows(scores, nthreads=nthreads);
+	std::vector<std::vector<int> > tabs = tabRows(scores, nthreads=nthreads);
 	
 	#pragma omp parallel for num_threads(nthreads)
 	for (int j = 0; j < nrow; ++j){
 		Rcpp::MatrixRow<INTSXP> scrow = scores.row(j);
 		Rcpp::MatrixRow<INTSXP> matrow = mat.row(j);
 		//get abundance of each symbol
-		Rcpp::IntegerVector tab = tabs[j];
+		std::vector<int>& tab = tabs[j];
 		//we need the cumulative sums of it
+		
+		
 		int acc = 0;
-		for (int i = 0, e = tab.length(); i < e; ++i){
+		for (int i = 0, e = tab.size(); i < e; ++i){
 			int tmp = tab[i];
 			tab[i] = acc;
 			acc += tmp;
@@ -508,28 +520,20 @@ Rcpp::IntegerMatrix splitAxesInt(Rcpp::IntegerMatrix scores, int nsplit, int nth
 	return mat;
 }
 
-//kullback-leibler divergence between negative multinomial mus1 and negative multinomial mus2
-double KL_div(double* mus1, double* mus2, double r, int len){
-	double logRatioSum = 0; //sum of mus1[i]*log(mus1[i]/mus2[i])
-	double mu1 = 0;
-	double mu2 = 0;
+//symmetrized kullback-leibler divergence between independent multivariate poissons
+//lmus1 and lmus2 are the logs of mus1 and mus2. In case mus1[i] is null, lmus1[i] must be a finite value (like -DBL_MAX).
+inline double Symm_KLdiv_pois(double* mus1, double* mus2, double* lmus1, double* lmus2, int len){
+	double logRatioSum = 0; //sum of (mus1[i]-mus2[i])*log(mus1[i]/mus2[i])
+	bool retInf = false;
 	for (int i = 0; i < len; ++i){
-		mu1 += mus1[i];
-		mu2 += mus2[i];
-		if (mus1[i] > 0){
-			if (mus2[i] == 0){
-				logRatioSum += std::numeric_limits<double>::infinity();
-			} else {
-				logRatioSum += mus1[i]*log(mus1[i]/mus2[i]);
-			}
-		}
+		retInf = retInf || ((mus1[i]>0)^(mus2[i]>0));
+		logRatioSum += (mus1[i]-mus2[i])*(lmus1[i]-lmus2[i]);
 	}
-	if (!R_FINITE(r)) {//poisson case
-		return mu2 - mu1 + logRatioSum;
-	} else {//negative binomial case
-		return (mu1 + r)*log((mu2 + r)/(mu1 + r)) + logRatioSum;
-	}
+	if (retInf) return std::numeric_limits<double>::infinity();
+	return logRatioSum*.5;
 }
+
+
 
 bool allPos(Rcpp::NumericVector v){
 	for (int i = 0, e = v.length(); i < e; ++i){
@@ -539,27 +543,60 @@ bool allPos(Rcpp::NumericVector v){
 }
 
 //compute symmetric kullback leibler divergence between all pairs of negative multinomials
-
 // [[Rcpp::export]]
-Rcpp::NumericMatrix KL_dist_mat(Rcpp::NumericMatrix nbs1, Rcpp::NumericMatrix nbs2, double r){
-	//check that the number of rows match
-	if (nbs1.nrow() != nbs2.nrow()) Rcpp::stop("the two matrices must have the same number of rows");
+Rcpp::NumericMatrix KL_dist_mat(Rcpp::NumericMatrix nbs, double r, int nthreads=1){
 	//check that all elements are positive
-	if (!allPos(nbs1) || !allPos(nbs2)) Rcpp::stop("the two matrices cannot contain negative numbers");
+	if (!allPos(nbs)) Rcpp::stop("the matrix cannot contain negative numbers");
 	//check that r is positive
 	if (r <= 0) Rcpp::stop("r must be strictly positive");
 	
-	int nrow = nbs1.nrow();
-	int ncol1 = nbs1.ncol();
-	int ncol2 = nbs2.ncol();
-	Rcpp::NumericMatrix dmat(ncol1, ncol2);
-	for (int i = 0; i < ncol1; ++i){
-		for (int j = 0; j < ncol2; ++j){
-			double* mus1 = nbs1.column(i).begin();
-			double* mus2 = nbs2.column(j).begin();
-			dmat(i,j) = (KL_div(mus1, mus2, r, nrow) + KL_div(mus2, mus1, r, nrow))*0.5;
+	int nrow = nbs.nrow();
+	int ncol = nbs.ncol();
+	
+	//precompute all the logarithms
+	int len = nrow*ncol;
+	std::vector<double> lognbs(len); 
+	#pragma omp parallel for num_threads(nthreads)
+	for (int i = 0; i < len; ++i){
+		lognbs[i] = nbs[i]>0?log(nbs[i]):(-DBL_MAX);
+	}
+	Mat<double> lnbs = asMat(lognbs, ncol);
+	//precompute all column sums and their logarithms + r(not needed for the poisson case)
+	std::vector<double> csums(ncol);
+	std::vector<double> lcsumsr(ncol);
+	if (R_FINITE(r)) {
+		//column sums
+		colSums(asMat(nbs), asVec(csums), nthreads);
+		//logarithms of the column sums + r
+		#pragma omp parallel for num_threads(nthreads)
+		for (int i = 0; i < ncol; ++i){
+			lcsumsr[i] = log(csums[i] + r);
 		}
 	}
+	
+	//along the diagonal the distance is zero, because Symm_KL_div(musi, musi, r, nrow)==0
+	Rcpp::NumericMatrix dmat(ncol, ncol);
+	int npairs = nPairs(ncol, true);
+	std::vector<int> breaks = makeBreaks(npairs, nthreads);
+	
+	#pragma omp parallel for num_threads(nthreads)
+	for (int t = 0; t < nthreads; ++t){
+		int k = breaks[t], lastK = breaks[t+1]; 
+		int i, j; kthPair(k, i, j, true);
+		while (k < lastK){
+			
+			double* mus1 = nbs.column(i).begin(); double* lmus1 = lnbs.colptr(i);
+			double* mus2 = nbs.column(j).begin(); double* lmus2 = lnbs.colptr(j);
+			double mu1 = csums[i]; double lmur1 = lcsumsr[i];
+			double mu2 = csums[j]; double lmur2 = lcsumsr[j];
+			dmat(i,j) = Symm_KLdiv_pois(mus1, mus2, lmus1, lmus2, nrow) + //poisson contribution
+									(mu1 - mu2)*(lmur2 - lmur1)*0.5; //neg binom contribution
+			dmat(j,i) = dmat(i,j);
+			
+			 ++k; ++j; if (j == i) { j = 0; ++i; }
+		}
+	}
+	
 	return dmat;
 }
 

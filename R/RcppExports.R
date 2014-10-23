@@ -44,14 +44,6 @@ tabFast <- function(counts) {
     .Call('kfoots_tabFast', PACKAGE = 'kfoots', counts)
 }
 
-tabCols <- function(counts, nthreads = 1L) {
-    .Call('kfoots_tabCols', PACKAGE = 'kfoots', counts, nthreads)
-}
-
-tabRows <- function(counts, nthreads = 1L) {
-    .Call('kfoots_tabRows', PACKAGE = 'kfoots', counts, nthreads)
-}
-
 labelCounts <- function(empirical, theoretical) {
     .Call('kfoots_labelCounts', PACKAGE = 'kfoots', empirical, theoretical)
 }
@@ -88,8 +80,8 @@ splitAxesInt <- function(scores, nsplit, nthreads = 1L) {
     .Call('kfoots_splitAxesInt', PACKAGE = 'kfoots', scores, nsplit, nthreads)
 }
 
-KL_dist_mat <- function(nbs1, nbs2, r) {
-    .Call('kfoots_KL_dist_mat', PACKAGE = 'kfoots', nbs1, nbs2, r)
+KL_dist_mat <- function(nbs, r, nthreads = 1L) {
+    .Call('kfoots_KL_dist_mat', PACKAGE = 'kfoots', nbs, r, nthreads)
 }
 
 findUniqueSeeds <- function(counts, permutation, k) {

@@ -18,35 +18,61 @@ kldiv <- function(mus1, mus2, r=Inf){
 	}
 }
 
+kldmat <- function(mus, r=Inf){
+	0.5*(t(apply(mus, 2, kldiv, mus2=mus, r=r)) + apply(mus, 2, kldiv, mus2=mus, r=r))
+}
+
 test_that("KL divergence works",{
-	#test one pair
-	mus1 <- abs(rnorm(10))
-	mus2 <- abs(rnorm(10))
-	r <- Inf
-	their_kldiv <- (kldiv(mus1, mus2, r) + kldiv(mus2, mus1, r))*.5
-	my_kldiv <- KL_dist_mat(matrix(mus1, ncol=1), matrix(mus2, ncol=1), r)[1]
-	#test with r=Inf
-	expect_equal(their_kldiv, my_kldiv)
-
+	#each column represents a neg multinom
+	mus <- matrix(
+		c(0,0,
+			0,3,
+			1,12,
+			3,3), nrow=2)
+	
+	#test with a finite r
 	r <- 2.5
-	their_kldiv <- (kldiv(mus1, mus2, r) + kldiv(mus2, mus1, r))*.5
-	my_kldiv <- KL_dist_mat(matrix(mus1, ncol=1), matrix(mus2, ncol=1), r)[1]
-	#test with a finite r
-	expect_equal(their_kldiv, my_kldiv)
-
-	#test many pairs
-	nbs1 <- matrix(abs(rnorm(10*10)), nrow=10)
-	nbs2 <- matrix(abs(rnorm(10*10)), nrow=10)
-	r <- Inf
-	their_kldiv <- 0.5*(t(apply(nbs1, 2, kldiv, mus2=nbs2, r=r)) + apply(nbs2, 2, kldiv, mus2=nbs1, r=r))
-	my_kldiv <- KL_dist_mat(nbs1, nbs2, r)
+	dmat <- KL_dist_mat(mus, r)
+	expect_equal(diag(dmat), rep(0, ncol(dmat)))
+	expect_equal(dmat, t(dmat))
+	expect_true(all(dmat>=0))
+	expect_true(all(dmat[c(1,2), c(3,4)]==Inf))
+	
+	#compare with slow algo
+	their_dmat <- kldmat(mus, r)
+	expect_equal(their_dmat, dmat)
+	
+	
+	#test more random pairs
+	mus <- matrix(abs(rnorm(10*100)), nrow=10)
+	
 	#test with r=Inf
-	expect_equal(their_kldiv, my_kldiv)
-	r <- 5.2
-	their_kldiv <- 0.5*(t(apply(nbs1, 2, kldiv, mus2=nbs2, r=r)) + apply(nbs2, 2, kldiv, mus2=nbs1, r=r))
-	my_kldiv <- KL_dist_mat(nbs1, nbs2, r)
+	r <- Inf
+	dmat <- KL_dist_mat(mus, r)
+	expect_equal(diag(dmat), rep(0, ncol(dmat)))
+	expect_equal(dmat, t(dmat))
+	expect_true(all(dmat>=0))
+	
+	#compare with slow algo
+	their_dmat <- kldmat(mus, r)
+	expect_equal(their_dmat, dmat)
+	
 	#test with a finite r
-	expect_equal(their_kldiv, my_kldiv)
+	r <- 2.5
+	dmat <- KL_dist_mat(mus, r)
+	expect_equal(diag(dmat), rep(0, ncol(dmat)))
+	expect_equal(dmat, t(dmat))
+	expect_true(all(dmat>=0))
+	
+	#compare with slow algo
+	their_dmat <- kldmat(mus, r)
+	expect_equal(their_dmat, dmat)
+	
+	#test with many threads
+	expect_equal(KL_dist_mat(mus, Inf), KL_dist_mat(mus, Inf, nthreads=10))
+	expect_equal(KL_dist_mat(mus, 2.5), KL_dist_mat(mus, 2.5, nthreads=10))
+	
+	
 })
 
 test_that("tpca works",{
@@ -197,7 +223,7 @@ test_that("the whole thing runs",{
 	})
 	
 	for (i in seq_along(inits)){
-		expect_equal(inits[[i]], inits_mc[[i]])
+		expect_equal(inits[[i]], inits_mc[[i]], tol=1e-6)
 	}
 })
 

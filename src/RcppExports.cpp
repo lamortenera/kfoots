@@ -58,38 +58,6 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
-// tabCols
-Rcpp::List tabCols(Rcpp::IntegerMatrix counts, int nthreads = 1);
-RcppExport SEXP kfoots_tabCols(SEXP countsSEXP, SEXP nthreadsSEXP) {
-BEGIN_RCPP
-    SEXP __sexp_result;
-    {
-        Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
-        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        Rcpp::List __result = tabCols(counts, nthreads);
-        PROTECT(__sexp_result = Rcpp::wrap(__result));
-    }
-    UNPROTECT(1);
-    return __sexp_result;
-END_RCPP
-}
-// tabRows
-Rcpp::List tabRows(Rcpp::IntegerMatrix counts, int nthreads = 1);
-RcppExport SEXP kfoots_tabRows(SEXP countsSEXP, SEXP nthreadsSEXP) {
-BEGIN_RCPP
-    SEXP __sexp_result;
-    {
-        Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP );
-        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
-        Rcpp::List __result = tabRows(counts, nthreads);
-        PROTECT(__sexp_result = Rcpp::wrap(__result));
-    }
-    UNPROTECT(1);
-    return __sexp_result;
-END_RCPP
-}
 // labelCounts
 Rcpp::IntegerVector labelCounts(Rcpp::NumericVector empirical, Rcpp::NumericVector theoretical);
 RcppExport SEXP kfoots_labelCounts(SEXP empiricalSEXP, SEXP theoreticalSEXP) {
@@ -243,16 +211,16 @@ BEGIN_RCPP
 END_RCPP
 }
 // KL_dist_mat
-Rcpp::NumericMatrix KL_dist_mat(Rcpp::NumericMatrix nbs1, Rcpp::NumericMatrix nbs2, double r);
-RcppExport SEXP kfoots_KL_dist_mat(SEXP nbs1SEXP, SEXP nbs2SEXP, SEXP rSEXP) {
+Rcpp::NumericMatrix KL_dist_mat(Rcpp::NumericMatrix nbs, double r, int nthreads = 1);
+RcppExport SEXP kfoots_KL_dist_mat(SEXP nbsSEXP, SEXP rSEXP, SEXP nthreadsSEXP) {
 BEGIN_RCPP
     SEXP __sexp_result;
     {
         Rcpp::RNGScope __rngScope;
-        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type nbs1(nbs1SEXP );
-        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type nbs2(nbs2SEXP );
+        Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type nbs(nbsSEXP );
         Rcpp::traits::input_parameter< double >::type r(rSEXP );
-        Rcpp::NumericMatrix __result = KL_dist_mat(nbs1, nbs2, r);
+        Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP );
+        Rcpp::NumericMatrix __result = KL_dist_mat(nbs, r, nthreads);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);
