@@ -33,8 +33,8 @@
 #'			whole dataset across iterations}
 #'		\item{viterbi}{see output of \code{viterbi}}
 #' @export
-hmmfoots <- function(counts, k, trans=NULL, initP=NULL, tol = 1e-8, maxiter=100, nthreads=1,
-	nbtype=c("indep","dep","pois"), init=c("rnd","counts","pca"), init.nlev=20, verbose=FALSE, seqlens=ncol(counts)){
+hmmfoots <- function(counts, k, trans=NULL, initP=NULL, tol = 1e-8, maxiter=200, nthreads=1,
+	nbtype=c("dep","indep","pois"), init=c("pca", "counts", "rnd"), init.nlev=20, verbose=FALSE, seqlens=ncol(counts)){
 	if (!is.matrix(counts))
 		stop("invalid counts variable provided. It must be a matrix")
 	#this will ensure efficiency of certain methods.

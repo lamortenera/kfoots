@@ -114,8 +114,8 @@ kfoots_wrapper <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
 #'		\item{llhistory}{time series containing the log-likelihood of the
 #'			whole dataset across iterations}
 #' @export
-kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=100, nthreads=1,
-	nbtype=c("indep","dep","pois"), init=c("rnd","counts","pca"), init.nlev=20, verbose=FALSE){
+kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=200, nthreads=1,
+	nbtype=c("dep","indep","pois"), init=c("pca", "counts", "rnd"), init.nlev=20, verbose=FALSE){
 	if (verbose)
 		cat("kfoots with ", nthreads, " threads\n")
 	
