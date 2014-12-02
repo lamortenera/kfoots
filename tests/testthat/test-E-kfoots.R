@@ -18,7 +18,7 @@ test_that("kfoots works", {
 				for (maxiter in maxiters){
 					for (nthreads in nthreadss){
 						#cat(k, init, nbtype, maxiter, length(seqlens), nthreads, "\n")
-						foot <- kfoots(counts, k, maxiter=maxiter, nbtype=nbtype, init=init, nthreads=nthreads)
+						foot <- kfoots(counts, k, maxiter=maxiter, nbtype=nbtype, init=init, nthreads=nthreads, framework="MM")
 						models <- foot$models
 						expect_true(modelsAreOk(models, k, nrow(counts), nbtype))
 						mix_coeff <- foot$mix_coeff
@@ -70,7 +70,7 @@ test_that("hmmfoots works", {
 					for (maxiter in maxiters){
 						for (nthreads in nthreadss){
 							#cat(k, init, nbtype, maxiter, length(seqlens), nthreads, "\n")
-							hmm <- hmmfoots(counts, k, maxiter=maxiter, nbtype=nbtype, init=init, seqlens=seqlens, nthreads=nthreads)
+							hmm <- kfoots(counts, k, maxiter=maxiter, nbtype=nbtype, init=init, seqlens=seqlens, nthreads=nthreads, framework="HMM")
 							models <- hmm$models
 							expect_true(modelsAreOk(models, k, nrow(counts), nbtype))
 							trans <- hmm$trans
@@ -98,8 +98,13 @@ test_that("hmmfoots works", {
 							if (eq != T) expect_true(viterbi$vllik < hmm$loglik)
 							
 							if (init != "rnd"){
-								if (nthreads == nthreadss[[1]]) res[[length(res)+1]] <- hmm
-								else if (nthreads == nthreadss[[2]]) mcres[[length(mcres)+1]] <- hmm
+								label <- paste0("k_", k, ",init_", init, ",nbtype_", nbtype, ",slens_", paste(seqlens, collapse=";"))
+								#we don't test that the viterbi paths coincide, because
+								#there are many equivalent viterbi paths and the choice
+								#depends a lot on the numerical fuzz
+								hmm$viterbi <- NULL
+								if (nthreads == nthreadss[[1]]) res[[label]] <- hmm
+								else if (nthreads == nthreadss[[2]]) mcres[[label]] <- hmm
 							}
 						}
 					}
@@ -108,6 +113,7 @@ test_that("hmmfoots works", {
 		}
 	}
 	expect_equal(res, mcres, 1e-6)
-	
+	#bug <- list(res=res, mcres=mcres, counts=counts)
+	#save(bug, file="/project/ale/home/data/kfoots_pkg/bug.Rdata")
 })
 

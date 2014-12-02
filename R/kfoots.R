@@ -10,78 +10,8 @@
 #' @useDynLib kfoots
 NULL
 
-#' Wrapper around \code{\link{kfoots_core}}.
-#'
-#' It implements multiple starting points and outer parallelization. 
-#' @param counts see documentation for \code{\link{kfoots}}
-#' @param models either the desired number of cluster, or a specific initial
-#' value for the models. In the second case and if \code{nstart}>1, only the first
-#' iteration will use the specified initial parameters.
-#' @param nstart number of starting points
-#' @param output print some output during execution
-#' @param cores number of cores to be used. It is used to run the different
-#' initializations of \code{kfoots} in parallel. Note that this option is  
-#' compatible with the \code{nthreads} option in \code{kfoots}, resulting in
-#' a maximum of \code{nthreads*cores} used cores.
-#' Setting \code{cores > nstart} is the same as setting \code{cores = nstart}.
-#' @param ... see documentation for \code{\link{kfoots}}
-#' @return see documentation for \code{\link{kfoots}}. The followings are additional
-#' items added to the list:
-#' 	\item{converged_vs_total}{if \code{nstart} > 1, the total number of times the 
-#' algorithm converged vs the number of inizialisations.}
-#' @export
-kfoots_wrapper <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
-	converged <- 0
-	bestFoots <- NA
-	bestLlik <- -Inf
-	if (cores <= 1 || nstart == 1){#no parallelization
-		for (i in 1:nstart){
-			foots <- kfoots(counts, k, verbose=verbose, ...)
-			
-			if (foots$loglik > bestLlik)
-				bestFoots <- foots
-				bestLlik <- foots$loglik
-			
-			if (foots$converged)
-				converged <- converged + 1
-			
-			#if initial parameters were specified,
-			#from 2nd iteration on use random initial parameters
-			if (is.list(k))
-				k <- length(k)
-		}
-	} else {#parallelize with mclapply
-		require(multicore)
-		if (is.list(k))
-			iargs <- c(list(k), rep(length(k), nstart-1))
-		else
-			iargs <- rep(k, nstart)
-		
-		footslist <- mclapply(mc.cores=min(cores, nstart), iargs, function(currk){
-			kfoots(counts, currk, verbose=verbose, ...)
-		})
-		
-		for (foots in footslist){
-			if (foots$loglik > bestLlik)
-				bestFoots <- foots
-				bestLlik <- foots$loglik
-			
-			if (foots$converged)
-				converged <- converged + 1
-		}
-		
-	}
-	
-	if (nstart > 1){
-		if (verbose)
-			cat("The algorithm converged", converged, "times out of", nstart, "\n")
-		bestFoots$converged_vs_total = converged/nstart
-	}
-	
-	bestFoots
-}
 
-#' Fit mixture model
+#' Fit mixture model or hidden markov model
 #'
 #' Fit a mixture of negative multinomials to some count data
 #' @param counts matrix of non-negative integers. Columns represent datapoints and rows
@@ -114,16 +44,15 @@ kfoots_wrapper <- function(counts, k, nstart=1, verbose=FALSE, cores=1, ...){
 #'		\item{llhistory}{time series containing the log-likelihood of the
 #'			whole dataset across iterations}
 #' @export
-kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=200, nthreads=1,
-	nbtype=c("dep","indep","pois"), init=c("pca", "counts", "rnd"), init.nlev=20, verbose=FALSE){
-	if (verbose)
-		cat("kfoots with ", nthreads, " threads\n")
+kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NULL, initP=NULL,
+			tol = 1e-8, maxiter=200, nthreads=1, nbtype=c("dep","indep","pois"), init=c("pca", "counts", "rnd"), init.nlev=20,
+			verbose=FALSE, seqlens=ncol(counts)){
 	
 	if (!is.matrix(counts))
 		stop("invalid counts variable provided. It must be a matrix")
-	#this will ensure efficiency of certain methods.
 	#all floating point numbers will be "floored" (not rounded)
 	storage.mode(counts) <- "integer"
+	framework <- match.arg(framework)
 	nbtype <- match.arg(nbtype)
 	init <- match.arg(init)
 	
@@ -136,7 +65,7 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=200, nthreads=
 		k <- length(models)
 	}
 	
-	#rows of the count matrix represent positions of the footprint
+	#rows of the count matrix represent positions of the footprint/histone marks
 	footlen <- nrow(counts)
 	#columns of the count matrix represent genomic loci
 	nloci <- ncol(counts)
@@ -144,97 +73,156 @@ kfoots <- function(counts, k, mix_coeff=NULL, tol = 1e-8, maxiter=200, nthreads=
 	ucs <- mapToUnique(colSumsInt(counts, nthreads))
 	mConst <- getMultinomConst(counts, nthreads)
 	
-	
-	if (is.null(models)){
-		#get initial random models. Need to be kind-of similar to
-		#the count matrix, cannot be completely random
-		if (init=="rnd"){
-			models <- rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
-		} else {
-			init <- initAlgo(counts, k, nlev=init.nlev, nbtype=nbtype, nthreads=nthreads, axes=init, verbose=verbose)
-			models <- init$models
-			mix_coeff <- init$mix_coeff
+	if (framework=="HMM"){
+		#make sure that the seqlens argument is all right
+		if (sum(seqlens) < nloci){
+			warning("the provided seqlens do not add up to the total input length (ncol(counts)), adding a chunk to cover all the input")
+			seqlens[length(seqlens)+1] <- nloci - sum(seqlens)
+		} else if (sum(seqlens) > nloci){
+			stop("invalid value for seqlens, the chunks sum up to more than the total input length")
 		}
 	}
-	if (is.null(mix_coeff)){
-		mix_coeff = rep(1/k, k)
+	
+	#set models
+	if (is.null(models)){
+		if (init=="rnd"){
+			#get initial random models
+			models <- rndModels(counts, k, bgr_prior=0.5, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
+		} else {
+			#use initialization algorithm. It will also provide values for the 
+			#mixture coefficient (framework=="MM") or the init probabilities and
+			#transition probabilities (framework=="HMM"), unless these are already set
+			init <- initAlgo(counts, k, nlev=init.nlev, nbtype=nbtype, nthreads=nthreads, axes=init, verbose=verbose)
+			models <- init$models
+			if (framework=="HMM"){
+				if (is.null(trans)) trans <- t(sapply(1:k, function(i) init$mix_coeff))
+				if (is.null(initP)) initP <- matrix(nrow=k, rep(init$mix_coeff, length(seqlens)))
+			} else {#(framework=="MM")
+				if (is.null(mix_coeff)) mix_coeff <- init$mix_coeff
+			}
+		}
 	}
-
+	
+	if (framework=="HMM"){
+		#make sure that the init and the transition probabilities are
+		#all right
+		if (is.null(trans)) {
+			trans <- matrix(rep(1/k, k*k), ncol=k)
+		} else if (is.matrix(trans) && (ncol(trans) != k || nrow(trans) != k)) {
+			stop("'trans' must be a k*k transition matrix")
+		} else if (!is.matrix(trans)){
+			stop("'trans' must be a matrix")
+		} 
+		if (any(!compare(rowSums(trans), rep(1, k), 1e-9))) stop("'trans' rows must sum up to 1")
+		
+		if (is.null(initP)) {
+			initP <- matrix(rep(1/k, k*length(seqlens)), ncol=length(seqlens))
+		} else if (is.vector(initP)&&!is.matrix(initP)&&length(seqlens)==1&&length(initP)==k){
+			initP <- matrix(initP, ncol=1)
+		} else if (is.matrix(initP) && (nrow(initP)!=k || ncol(initP)!=length(seqlens))){
+			stop("invalid 'initP' matrix provided: one column per sequence and one row per model")
+		} else if (!is.matrix(initP)){
+			stop("'initP' must be a matrix, or a vector if there is only one sequence")
+		}
+		if (any(!compare(colSums(initP), rep(1, ncol(initP)), tol))) stop("'initP' columns must sum up to 1")
+	} else {#(framework == "MM")
+		#make sure that the mixture coefficients are all right
+		if (is.null(mix_coeff)){
+			mix_coeff = rep(1/k, k)
+		} else if (!compare(sum(mix_coeff), 1, 1e-9)) {
+			stop("'mix_coeff' must sum up to 1")
+		}
+	}
+	
 	#allocating memory
 	posteriors <- matrix(0, nrow=k, ncol=nloci)
 	lliks <- matrix(0, nrow=k, ncol=nloci)
 	
+	
 	loglik <- NA
 	converged <- FALSE
 	llhistory <- numeric(maxiter)
+	if (verbose) cat("starting main loop\n")
 	for (iter in 1:maxiter){
+		#get log likelihoods
 		lLikMat(lliks=lliks, counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)
 		
-		res <- llik2posteriors(posteriors=posteriors, lliks, mix_coeff, nthreads=nthreads)
-		new_loglik <- res$tot_llik
-		new_mix_coeff <- res$new_mix_coeff
-		
-		if (verbose){
-			cat("Iteration: ", iter, ", log-likelihood: ", new_loglik, "\n")
+		#get posterior probabilities and train 
+		#mixture coefficients (framework=="MM")
+		#or init and transition probabilities (framework=="HMM")
+		if (framework=="HMM"){
+			res <- forward_backward(posteriors=posteriors, initP, trans, lliks, seqlens, nthreads=nthreads)
+			
+			new_loglik <- res$tot_llik
+			new_trans <- res$new_trans
+			new_initP <- res$new_initP
+		} else {#framework == "MM"
+			res <- llik2posteriors(posteriors=posteriors, lliks, mix_coeff, nthreads=nthreads)
+			
+			new_loglik <- res$tot_llik
+			new_mix_coeff <- res$new_mix_coeff
 		}
+
+		if (verbose) cat("Iteration:", iter, "log-likelihood:", new_loglik, "\n", sep="\t")
 		
+		#train models
 		new_models <- fitModels(counts, posteriors, models, ucs=ucs, type=nbtype, nthreads=nthreads)
 		
-		
-		if(iter!=1 && new_loglik < loglik && !compare(new_loglik, loglik, tol))
-			warning(paste0("decrease in log-likelihood at iteration ",iter))
-		
-		
-		if (all(compare(mix_coeff, new_mix_coeff,tol))){
-			if (all(sapply(c(1:k), function(m) compareModels(models[[m]], new_models[[m]], tol)))){
+		if (iter > 1){
+			if (compare(new_loglik, loglik, tol)){
 				converged <- TRUE
+			} else if (new_loglik < loglik){
+				warning(paste0("decrease in log-likelihood at iteration ", iter))
 			}
 		}
 		
-		mix_coeff <- new_mix_coeff
+		#update parameters
 		models <- new_models
 		loglik <- new_loglik
 		llhistory[iter] <- loglik
-		if (converged){
-			break
+		if (framework=="HMM"){
+			trans <- new_trans
+			initP <- new_initP
+		} else {#framework == "MM"
+			mix_coeff <- new_mix_coeff
 		}
+		
+		if (converged) break
 	}
+	
 	if (!converged)
 		warning(paste0("The algorithm did not converge after ", maxiter, " iterations (try to increase parameter maxiter)"))
-	
+
+	#set the histone mark names in the models object
 	for (i in seq_along(models)){
 		names(models[[i]]$ps) <- rownames(counts)
 	}
 	
+	#compute MAP cluster (state) assignments
 	#same as: clusters <- apply(posteriors, 2, which.max)
 	clusters <- pwhichmax(posteriors, nthreads=nthreads)
 	
-	list(models=models, mix_coeff=mix_coeff, loglik = loglik,
-	posteriors=posteriors, clusters=clusters, converged = converged, llhistory=llhistory[1:iter])
+	#final result
+	result <- list(models=models, loglik=loglik, posteriors=posteriors, clusters=clusters,
+		converged=converged, llhistory=llhistory[1:iter])
+	
+	#if framework==HMM, add init and transition probs and compute viterbi path
+	if (framework=="HMM"){
+		result$initP <- initP
+		result$trans <- trans
+		lLikMat(lliks=lliks, counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)
+		result$viterbi <- viterbi(initP, trans, lliks, seqlens)
+	} else {
+	#if framework==MM, add the mixture coefficients
+		result$mix_coeff <- mix_coeff
+	}
+	
+	
+	result
 }
 
 
 
-#no fitting is done for the ps variables
-fitNoiseModel <- function(counts, posteriors=NULL, old_r=NULL, maxit=100, ucs=NULL, nthreads=1){
-	if (is.null(posteriors))
-		posteriors <- rep(1.0, ncol(counts))
-	
-	#noise model, ps are uniform
-	nr <- nrow(counts)
-	ps <- rep(1/nr, nr)
-	
-	#fitting the negative binomial
-	#if ucs is provided, no need to compute colSums
-	if (is.null(ucs))
-		ucs <- mapToUnique(colSumsInt(counts, nthreads))
-		
-	res <- fitNB(ucs, posteriors=posteriors, old_r=old_r, maxit=maxit)
-	res$ps <- ps
-	res$tag <- "noise"
-	
-	res
-}
 
 #' Fit a negative binomial distribution
 #'
@@ -280,6 +268,37 @@ fitNB <- function(counts, posteriors=NULL, old_r=NULL, tol=1e-8, nthreads=1){
 	
 	fitNB_inner(counts, posteriors, old_r, tol=tol, nthreads=nthreads)
 	
+}
+
+#' Get a steady state of a transition matrix.
+#'
+#' It should give a similar result as 
+#' \code{rep(1/ncol(trans), ncol(trans)) trans^(big number)}
+#' except that oscillating behaviours are averaged out.
+#' @param trans transition matrix (rows are previous state, columns are next state)
+#' @return a vector with a steady state distribution
+#'	@export
+getSteadyState <- function(trans){
+	ttrans <- t(matpowtrans(trans, 2^30))
+	as.numeric(ttrans %*% rep(1/ncol(trans), ncol(trans)))
+}
+
+#fast exponentiation algorithm,
+#correct numerical fuzz by exploiting that 
+#the rowSums sum up to 1
+matpowtrans <- function(trans, pow){
+	if (pow==1){
+		trans
+	}
+	else if (pow %% 2 == 0){
+		tmp <- matpowtrans(trans, pow/2)
+		tmp <- tmp %*% tmp
+		tmp/rowSums(tmp)
+	}
+	else {
+		tmp <- trans %*% matpowtrans(trans, pow-1)
+		tmp/rowSums(tmp)
+	}
 }
 
 
@@ -335,4 +354,28 @@ exampleData <- function(n=10000, indep=FALSE){
 		generateData(n, list(m1, m2), c(p1,p2))
 }
 
+
+generateHMMData <- function(n, models, trans, initP=getSteadyState(trans)){
+	state <- sample(length(models), 1, prob=initP)
+	mat <- matrix(0L, ncol=n, nrow=length(models[[1]]$ps))
+	mat[,1] <- generateCol(models[[state]])
+	for (i in 2:n){
+		state <- sample(length(models), 1, prob=trans[state,])
+		mat[,i] <- generateCol(models[[state]])
+	}
+	mat
+}
+
+exampleHMMData <- function(n=c(20000, 50000, 30000)){
+	m1 = list(mu=40, r=0.4, ps=c(1,8,5,8,5,6,5,4,3,2,1))
+	m2 = list(mu=20, r=2, ps=c(1,1,1,1,1,3,4,5,6,5,4))
+	m1$ps = m1$ps/sum(m1$ps)
+	m2$ps = m2$ps/sum(m2$ps)
+	models <- list(m1, m2)
+	
+	trans = matrix(nrow=2, ncol=2, c(0.2, 0.6, 0.8, 0.4))
+	
+	
+	do.call(cbind, lapply(n, function(currn) {generateHMMData(currn, models, trans)}))
+}
 

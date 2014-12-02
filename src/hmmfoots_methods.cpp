@@ -56,7 +56,6 @@ static inline double forward_backward_core(	Mat<double> initPs, Mat<double> tran
 			int chunk_start = chunk_starts[o];
 			int chunk_end =  chunk_start + seqlens[o];
 			double* initP = initPs.colptr(o);
-			double* new_initP = new_initPs.colptr(o);
 			
 			/* FORWARD LOOP */
 			/* first iteration is from fictitious start state */
@@ -141,6 +140,7 @@ static inline double forward_backward_core(	Mat<double> initPs, Mat<double> tran
 				}
 			}
 			/* set new_initP */
+			double* new_initP = new_initPs.colptr(o);
 			double* posterior = posteriors.colptr(chunk_start);
 			for (int r = 0; r < nrow; ++r){
 				new_initP[r] = posterior[r];

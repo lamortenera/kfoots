@@ -41,7 +41,7 @@ plotMatrix <- function(mat, xticks=colnames(mat), yticks=rownames(mat), zlim=ran
 	}
 	
 	if (is.null(yticks)){
-		#user selected NULL or there are no rownames in qthe matrix
+		#user selected NULL or there are no rownames in the matrix
 		yticks = 1:nrow(mat)
 	}
 	if (!is.na(yticks)[1]){
