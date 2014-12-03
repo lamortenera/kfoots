@@ -152,3 +152,7 @@ fitModelsGapMat <- function(counts, posteriors, models, ucs, type = "indep", tol
     .Call('kfoots_fitModelsGapMat', PACKAGE = 'kfoots', counts, posteriors, models, ucs, type, tol, nthreads)
 }
 
+checkInterrupt <- function() {
+    invisible(.Call('kfoots_checkInterrupt', PACKAGE = 'kfoots'))
+}
+

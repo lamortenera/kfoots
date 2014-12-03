@@ -148,7 +148,7 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
 	llhistory <- numeric(maxiter)
 	
 	tryCatch({
-	#MAIN EM LOOP
+	#MAIN LOOP
 	if (verbose) cat("starting main loop\n")
 	for (iter in 1:maxiter){
 		#get log likelihoods
@@ -167,7 +167,10 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
 			new_loglik <- res$tot_llik
 			new_mix_coeff <- res$new_mix_coeff
 		}
-
+		
+		#check if the user pressed CTRL-C
+		checkInterrupt()
+		
 		if (verbose) cat("Iteration:", iter, "log-likelihood:", new_loglik, "\n", sep="\t")
 		
 		#train models

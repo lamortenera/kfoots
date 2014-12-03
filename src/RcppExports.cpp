@@ -486,3 +486,14 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
+// checkInterrupt
+void checkInterrupt();
+RcppExport SEXP kfoots_checkInterrupt() {
+BEGIN_RCPP
+    {
+        Rcpp::RNGScope __rngScope;
+        checkInterrupt();
+    }
+    return R_NilValue;
+END_RCPP
+}

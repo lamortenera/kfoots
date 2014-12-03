@@ -388,7 +388,10 @@ Rcpp::List fitModelsGapMat(SEXP counts, Rcpp::NumericVector posteriors, Rcpp::Li
 	return fitModels_helper(asGapMat<int>(counts), posteriors, models, ucs, type, tol, nthreads);
 }
 
-
+// [[Rcpp::export]]
+void checkInterrupt(){
+	R_CheckUserInterrupt();
+}
 
 /*
 // [[Rcpp::export]]
