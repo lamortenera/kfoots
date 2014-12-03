@@ -6,7 +6,7 @@
 #include <math.h>
 #include "optim.cpp"
 
-//it would take too long to organize these headers properly, but conceptually, you should use only the following headers:
+//it would take too long to organize these headers properly, but conceptually, you should use only the following functions:
 //map2unique_core
 //getMultinomConst_core
 //fitNBs_core

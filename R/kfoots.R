@@ -103,9 +103,12 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
 		}
 	}
 	
+	#make sure that the provided (or computed) models are all right
+	checkModels(models, k, footlen, nbtype)
+	
+	#set framework probabilities
 	if (framework=="HMM"){
-		#make sure that the init and the transition probabilities are
-		#all right
+		#make sure that the init and the transition probabilities are all right
 		if (is.null(trans)) {
 			trans <- matrix(rep(1/k, k*k), ncol=k)
 		} else if (is.matrix(trans) && (ncol(trans) != k || nrow(trans) != k)) {
@@ -113,7 +116,7 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
 		} else if (!is.matrix(trans)){
 			stop("'trans' must be a matrix")
 		} 
-		if (any(!compare(rowSums(trans), rep(1, k), 1e-9))) stop("'trans' rows must sum up to 1")
+		if (!all(apply(trans, 1, isProbVector))) stop("'trans' rows must sum up to 1")
 		
 		if (is.null(initP)) {
 			initP <- matrix(rep(1/k, k*length(seqlens)), ncol=length(seqlens))
@@ -124,12 +127,13 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
 		} else if (!is.matrix(initP)){
 			stop("'initP' must be a matrix, or a vector if there is only one sequence")
 		}
-		if (any(!compare(colSums(initP), rep(1, ncol(initP)), tol))) stop("'initP' columns must sum up to 1")
+		if (!all(apply(initP, 2, isProbVector))) stop("'initP' columns must sum up to 1")
+		
 	} else {#(framework == "MM")
 		#make sure that the mixture coefficients are all right
 		if (is.null(mix_coeff)){
 			mix_coeff = rep(1/k, k)
-		} else if (!compare(sum(mix_coeff), 1, 1e-9)) {
+		} else if (!isProbVector(mix_coeff)) {
 			stop("'mix_coeff' must sum up to 1")
 		}
 	}
@@ -142,14 +146,15 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
 	loglik <- NA
 	converged <- FALSE
 	llhistory <- numeric(maxiter)
+	
+	tryCatch({
+	#MAIN EM LOOP
 	if (verbose) cat("starting main loop\n")
 	for (iter in 1:maxiter){
 		#get log likelihoods
 		lLikMat(lliks=lliks, counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)
 		
-		#get posterior probabilities and train 
-		#mixture coefficients (framework=="MM")
-		#or init and transition probabilities (framework=="HMM")
+		#get posterior probabilities and train framework probabilities
 		if (framework=="HMM"){
 			res <- forward_backward(posteriors=posteriors, initP, trans, lliks, seqlens, nthreads=nthreads)
 			
@@ -192,7 +197,11 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
 	
 	if (!converged)
 		warning(paste0("The algorithm did not converge after ", maxiter, " iterations (try to increase parameter maxiter)"))
-
+	},
+	interrupt=function(i){
+		if (verbose) cat("User interrupt detected, stopping main loop and returning current data\n")
+	})
+	
 	#set the histone mark names in the models object
 	for (i in seq_along(models)){
 		names(models[[i]]$ps) <- rownames(counts)
@@ -221,7 +230,24 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
 	result
 }
 
+isProbVector <- function(v, tol=1e-9){
+	all(v >= 0) && compare(sum(v), 1, tol)
+}
 
+checkModels <- function(models, k, nrow, nbtype){
+	if (length(models) != k) stop(paste0("models must be a list of length ", k))
+	tryCatch({
+		for (model in models){
+			if (length(model$ps) != nrow || !isProbVector(model$ps)) stop("'ps' vector of each model must have the right length and sum up to 1")
+			if (!(all(is.finite(c(model$mu, model$ps))) && (unlist(model) >= 0))) stop("non-finite or negative model parameters")
+			if (nbtype=="dep" && model$r != models[[1]]$r) stop("models not consistent with the 'dep' setting")
+			if (nbtype=="pois" && model$r != Inf) stop("models not consistent with the 'indep' setting")
+		}
+	},
+	error=function(cond){
+		stop("invalid models")
+	})
+}
 
 
 #' Fit a negative binomial distribution
