@@ -62,7 +62,7 @@ initAlgo <- function(counts, k, nlev=5, nthreads=1, nbtype=c("indep", "dep", "po
 		#scores has the same format as counts
 		scores <- pca$tx
 		#linearly transforms the scores to positive integers from 0 to 999
-		dog("splitting axes (involves sorting)", v=verbose)
+		dog("splitting axes", v=verbose)
 		coords <- splitAxes(scores, nlev, nthreads=nthreads)
 	}
 	
@@ -118,14 +118,14 @@ initAlgo <- function(counts, k, nlev=5, nthreads=1, nbtype=c("indep", "dep", "po
 
 
 #to be parallelized, or avoid iteration through the whole matrix
-rndModels <- function(counts, k, bgr_prior=0.5, ucs=NULL, nbtype="indep", nthreads=1){
+rndModels <- function(counts, k, bgr_prior=0.5, ucs=NULL, nbtype="dep", nthreads=1){
 	seeds <- getUniqueSeeds(counts, k)
 	modelsFromSeeds(counts, seeds, bgr_prior=bgr_prior, ucs=ucs, nbtype=nbtype, nthreads=nthreads)
 }
 
 #seeds are columns of the count matrix which are guaranteed to be distinct.
 #they are used to initialize the models
-modelsFromSeeds <- function(counts, seeds, bgr_prior=0.5, ucs=NULL, nbtype="indep", nthreads=1){
+modelsFromSeeds <- function(counts, seeds, bgr_prior=0.5, ucs=NULL, nbtype="dep", nthreads=1){
 	posteriors <- matrix(nrow=length(seeds), ncol=ncol(counts), bgr_prior)
 	#perturb row i at column seeds[i]
 	perturb_pos <- seeds*length(seeds) + 1:length(seeds)

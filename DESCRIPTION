@@ -12,6 +12,6 @@ License: GNU general public license
 Suggests:
     testthat,
     HMM
-Depends:
+Imports:
     Rcpp (>= 0.10.5)
 LinkingTo: Rcpp
