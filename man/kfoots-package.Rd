@@ -1,0 +1,14 @@
+\docType{package}
+\name{kfoots-package}
+\alias{kfoots-package}
+\title{Models for multivariate count data}
+\description{
+The package provides methods for fitting multivariate count
+data with a mixture model. Each mixture component is a
+negative multinomial random variable and an EM algorithm is
+used to maximize the likelihood.
+}
+\author{
+Alessandro Mammana \email{mammana@molgen.mpg.de}
+}
+
