@@ -1,1 +1,7 @@
-man/
+#compiled files
+*.o
+*.so
+
+#R history
+.Rhistory
+
