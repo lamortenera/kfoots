@@ -6,9 +6,10 @@ Date: 2013-10-22
 Author: Alessandro Mammana
 Maintainer: Alessandro Mammana <mammana@molgen.mpg.de>
 Description: The package provides methods for fitting multivariate count data
-    with a mixture model. Each mixture component is a negative multivariate
-    random variable and an EM algorithm is used to maximize the likelihood.
-License: GNU general public license
+    with a mixture model or a hidden markov model. Each mixture component is
+    a negative multivariate random variable and an EM algorithm is used to maximize
+    the likelihood.
+License: GPL-2
 Suggests:
     testthat,
     HMM
