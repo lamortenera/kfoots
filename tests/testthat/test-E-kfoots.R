@@ -18,7 +18,7 @@ test_that("kfoots works", {
 				for (maxiter in maxiters){
 					for (nthreads in nthreadss){
 						#cat(k, init, nbtype, maxiter, length(seqlens), nthreads, "\n")
-						foot <- kfoots(counts, k, maxiter=maxiter, nbtype=nbtype, init=init, nthreads=nthreads, framework="MM")
+						foot <- kfoots(counts, k, maxiter=maxiter, nbtype=nbtype, init=init, nthreads=nthreads, framework="MM", verbose=F)
 						models <- foot$models
 						expect_true(modelsAreOk(models, k, nrow(counts), nbtype))
 						mix_coeff <- foot$mix_coeff
@@ -70,7 +70,7 @@ test_that("hmmfoots works", {
 					for (maxiter in maxiters){
 						for (nthreads in nthreadss){
 							#cat(k, init, nbtype, maxiter, length(seqlens), nthreads, "\n")
-							hmm <- kfoots(counts, k, maxiter=maxiter, nbtype=nbtype, init=init, seqlens=seqlens, nthreads=nthreads, framework="HMM")
+							hmm <- kfoots(counts, k, maxiter=maxiter, nbtype=nbtype, init=init, seqlens=seqlens, nthreads=nthreads, framework="HMM", verbose=F)
 							models <- hmm$models
 							expect_true(modelsAreOk(models, k, nrow(counts), nbtype))
 							trans <- hmm$trans

@@ -8,6 +8,7 @@
 #' @docType package
 #' @author Alessandro Mammana \email{mammana@@molgen.mpg.de}
 #' @useDynLib kfoots
+#' @import Rcpp
 NULL
 
 
