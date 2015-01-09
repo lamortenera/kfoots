@@ -1,6 +1,7 @@
 #include <Rcpp.h>
 #include "array.cpp"
 #include <algorithm> 
+#include <unordered_map>
 #include <R_ext/BLAS.h>
 #include <parallel/algorithm>
 
