@@ -1,6 +1,8 @@
 ## Use the R_HOME indirection to support installations of multiple R version
-PKG_LIBS = `$(R_HOME)/bin/Rscript -e "Rcpp:::LdFlags()"` -fopenmp -lgomp
-PKG_CPPFLAGS = -std=c++11 -fopenmp -I../inst/include/
+CXX_STD = CXX11
+PKG_CPPFLAGS = $(SHLIB_OPENMP_CXXFLAGS) -I../inst/include/
+PKG_LIBS = `$(R_HOME)/bin/Rscript -e "Rcpp:::LdFlags()"` $(SHLIB_OPENMP_CXXFLAGS)
+
 
 ## As an alternative, one can also add this code in a file 'configure'
 ##
