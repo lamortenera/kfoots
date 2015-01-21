@@ -75,6 +75,11 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
 			tol = 1e-4, maxiter=200, nthreads=1, nbtype=c("dep","indep","pois"), init=c("pca", "counts", "rnd"), init.nlev=20,
 			verbose=TRUE, seqlens=ncol(counts)){
 	
+	if (nthreads < 0) {
+		warning("non-positive value provided for variable 'nthreads', using 1 thread")
+		nthreads <- 1
+	}
+	
 	if (!is.matrix(counts))
 		stop("invalid counts variable provided. It must be a matrix")
 	#all floating point numbers will be "floored" (not rounded)
