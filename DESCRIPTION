@@ -5,12 +5,13 @@ Version: 1.0
 Date: 2013-10-22
 Author: Alessandro Mammana
 Maintainer: Alessandro Mammana <mammana@molgen.mpg.de>
-SystemRequirements: C++11 
 Description: The package provides methods for fitting multivariate count data
     with a mixture model or a hidden markov model. Each mixture component is a
     negative multivariate random variable and an EM algorithm is used to
     maximize the likelihood.
 License: GPL-2
+SystemRequirements: C++11 
+Depends: R (>= 3.1.0)
 Suggests:
     testthat,
     HMM
