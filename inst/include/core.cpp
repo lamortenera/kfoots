@@ -344,12 +344,43 @@ static inline void fitNBs_core(Mat<double> posteriors, Vec<double> mus, Vec<doub
 	}
 }
 
+static inline void fitNBs_1r_helper(Vec<int> values, Mat<double> posteriors, Vec<double> mus, double* r, double tol=1e-8, int nthreads=1){
+	if (values.len != posteriors.ncol || posteriors.nrow != mus.len) {
+		std::invalid_argument("invalid parameters passed to fitNBs_1r_helper");
+	}
+	//fit the means
+	fitMeans_core(values, posteriors, mus, nthreads);
+	//fit R
+	//get some global posteriors (should be the same as the occurrences of each count)
+	std::vector<double> totPost(values.len);
+	colSums(posteriors, asVec(totPost), nthreads);
+	//get the variance of the data
+	double mean, var, wsum;
+	meanAndVar(asVec(totPost), values, &mean, &var, &wsum, nthreads);
+	//get two initial points
+	//the initial r
+	double initR = *r;
+	//the r that matches the sample variance
+	double guessR = mean*mean / (var  -  mean);
+	validateAndLogBraketing(&initR, &guessR, tol);
+	
+	optimData2 info;
+	info.counts = values;
+	info.posteriors = posteriors;
+	info.mus = mus;
+	info.nthreads = nthreads;
+	
+	initR = brent_wrapper(initR, guessR, fn1d_2, &info, tol);
+		
+	*r = exp(initR);
+}
+
 
 static inline void fitNBs_1r_core(Mat<double> posteriors, Vec<double> mus, double* r, NMPreproc& preproc, Mat<double> tmpNB, double tol=1e-8, int nthreads=1){
 	int ncol = posteriors.ncol;
 	int nmod = posteriors.nrow;
 	if (mus.len != nmod || tmpNB.ncol*tmpNB.nrow != nmod*preproc.uniqueCS.len || ncol != preproc.map.len){
-		throw std::invalid_argument("invalid parameters passed to fitNBs_core");
+		throw std::invalid_argument("invalid parameters passed to fitNBs_1r_core");
 	}
 	Vec<int> map = preproc.map;
 	Vec<int> values = preproc.uniqueCS;
@@ -366,31 +397,8 @@ static inline void fitNBs_1r_core(Mat<double> posteriors, Vec<double> mus, doubl
 			tmpNB(mod, map[col]) += posteriors(mod, col);
 		}
 	}
-	//fit the means
-	fitMeans_core(values, tmpNB, mus, nthreads);
-	//fit R
-	//get some global posteriors (should be the same as the occurrences of each count)
-	std::vector<double> totPost(values.len);
-	colSums(tmpNB, asVec(totPost), nthreads);
-	//get the variance of the data
-	double mean, var, wsum;
-	meanAndVar(asVec(totPost), values, &mean, &var, &wsum, nthreads);
-	//get two initial points
-	//the initial r
-	double initR = *r;
-	//the r that matches the sample variance
-	double guessR = mean*mean / (var  -  mean);
-	validateAndLogBraketing(&initR, &guessR, tol);
+	fitNBs_1r_helper(values, tmpNB, mus, r, tol, nthreads);
 	
-	optimData2 info;
-	info.counts = values;
-	info.posteriors = tmpNB;
-	info.mus = mus;
-	info.nthreads = nthreads;
-	
-	initR = brent_wrapper(initR, guessR, fn1d_2, &info, tol);
-		
-	*r = exp(initR);
 }
 
 
