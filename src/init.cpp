@@ -1,5 +1,6 @@
 #include <Rcpp.h>
 #include "array.cpp"
+#include "tabbing.hpp"
 #include <algorithm> 
 #include <unordered_map>
 #include <R_ext/BLAS.h>
@@ -31,31 +32,6 @@ inline int nPairs(int n, bool noDiag=false){
 	return (n*(n+1))/2;
 }
 
-//TABBING FUNCTIONS: they perform something similar to table(v) in R, where v is
-//an integer vector, with 2 differences:
-//1: v has to contain only positive values
-//2: the resulting table will contain all contiguous values from 0 to max(v), even if
-//		 they do not occur in v
-inline void shrink(std::vector<int>& v){
-	int realsize = v.size();
-	for (; realsize > 0 && v[realsize-1] == 0; --realsize){}
-	v.resize(realsize);
-}
-
-
-template<typename TIter>
-void tabFast_impl(TIter C, TIter E, std::vector<int>& tab, bool wantshrink=true){
-	int csize = tab.size();
-	for (; C < E; ++C){
-		int c = *C;
-		if (c < 0) Rcpp::stop("negative counts are not allowed");
-		if (c >= csize) { csize += c; tab.resize(csize); }
-		++tab[c];
-	}
-	if (wantshrink) shrink(tab);
-}
-
-//main function
 // [[Rcpp::export]]
 Rcpp::IntegerVector tabFast(Rcpp::IntegerVector counts){
 	std::vector<int> tab(100);
@@ -87,7 +63,6 @@ std::vector<std::vector<int> > tabRows(Rcpp::IntegerMatrix counts, int nthreads=
 	return result;
 }
 
-//END TABBING FUNCTIONS
 //method for doing quantile normalization between an empirical and a theoretical distribution
 //cfreq is the cumulative frequency of some empirical counts (position zero corresponds to count zero and so on)
 //cdf is a callable function or class such that cdf(i) gives the cumulative prob
