@@ -5,9 +5,7 @@
 #'
 #' Forward-backward algorithm using the scaling technique.
 #' That's more stable (and maybe even faster) than the method with the logarithm.
-#' Warning: this function overwrites the lliks matrix. This is probably a bad idea
-#' because normally in the last loop you want to use the same matrix
-#' for forward_backward and viterbi. I might change that in the future.
+#' Warning: this function overwrites the lliks matrix. 
 #' @param initP matrix of initial probabilities: each column corresponds to a sequence
 #' @param trans transition matrix (rows are previous state, columns are next state)
 #' @param lliks matrix with emission probabilities for each datapoint and each state.
@@ -15,9 +13,9 @@
 #' @param seqlens length of each subsequence of datapoints (set this to ncol(lliks)
 #' if there is only one sequence).
 #' @return a list with the following arguments:
-#'	\item{posteriors}{posterior probability of being in a certain state for a certain datapoint}
-#'	\item{tot_llik}{total log-likelihood of the data given the hmm model}
-#'	\item{new_trans}{update for the transition probabilities (it is already normalized)}
+#'    \item{posteriors}{posterior probability of being in a certain state for a certain datapoint}
+#'    \item{tot_llik}{total log-likelihood of the data given the hmm model}
+#'    \item{new_trans}{update for the transition probabilities (it is already normalized)}
 #' @export
 forward_backward <- function(initP, trans, lliks, seqlens, posteriors, nthreads = 1L) {
     .Call('kfoots_forward_backward', PACKAGE = 'kfoots', initP, trans, lliks, seqlens, posteriors, nthreads)
@@ -33,8 +31,8 @@ forward_backward <- function(initP, trans, lliks, seqlens, posteriors, nthreads 
 #' @param seqlens length of each subsequence of datapoints (set this to ncol(lliks)
 #' if there is only one sequence).
 #' @return a list with the following arguments:
-#'	\item{vpath}{viterbi path}
-#'	\item{vllik}{log-likelihood of the viterbi path}
+#'    \item{vpath}{viterbi path}
+#'    \item{vllik}{log-likelihood of the viterbi path}
 #' @export
 viterbi <- function(initP, trans, lliks, seqlens) {
     .Call('kfoots_viterbi', PACKAGE = 'kfoots', initP, trans, lliks, seqlens)
@@ -95,11 +93,11 @@ llik2posteriors <- function(lliks, mix_coeff, posteriors, nthreads = 1L) {
 #' Group unique values of a vector
 #'
 #' @param v a vector of integers. If they are not integers they will be
-#' 	casted to integers.
+#'     casted to integers.
 #' @return a list with the following items:
-#'		\item{values}{unique and sorted values of \code{v}}
-#'		\item{map}{a vector such that \code{v[i] = values[map[i]+1]} for every i}
-#'	@export
+#'        \item{values}{unique and sorted values of \code{v}}
+#'        \item{map}{a vector such that \code{v[i] = values[map[i]+1]} for every i}
+#'    @export
 mapToUnique <- function(values) {
     .Call('kfoots_mapToUnique', PACKAGE = 'kfoots', values)
 }
