@@ -35,6 +35,19 @@ BEGIN_RCPP
     return __result;
 END_RCPP
 }
+// testSchedule
+Rcpp::List testSchedule(Rcpp::NumericVector jobs, int nthreads, int type);
+RcppExport SEXP kfoots_testSchedule(SEXP jobsSEXP, SEXP nthreadsSEXP, SEXP typeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject __result;
+    Rcpp::RNGScope __rngScope;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type jobs(jobsSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
+    Rcpp::traits::input_parameter< int >::type type(typeSEXP);
+    __result = Rcpp::wrap(testSchedule(jobs, nthreads, type));
+    return __result;
+END_RCPP
+}
 // tabFast
 Rcpp::IntegerVector tabFast(Rcpp::IntegerVector counts);
 RcppExport SEXP kfoots_tabFast(SEXP countsSEXP) {

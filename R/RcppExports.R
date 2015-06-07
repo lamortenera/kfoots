@@ -38,6 +38,10 @@ viterbi <- function(initP, trans, lliks, seqlens) {
     .Call('kfoots_viterbi', PACKAGE = 'kfoots', initP, trans, lliks, seqlens)
 }
 
+testSchedule <- function(jobs, nthreads, type) {
+    .Call('kfoots_testSchedule', PACKAGE = 'kfoots', jobs, nthreads, type)
+}
+
 tabFast <- function(counts) {
     .Call('kfoots_tabFast', PACKAGE = 'kfoots', counts)
 }

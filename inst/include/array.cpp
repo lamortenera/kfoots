@@ -1,3 +1,5 @@
+#pragma once
+
 #include <Rcpp.h>
 #include <stdexcept> 
 #include <iostream>

@@ -336,7 +336,7 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteri
         Rcpp::stop("Invalid arguments passed to fitModels");
     }
     Mat<double> postMat(posteriors.begin(), nmodels, counts.ncol);
-    
+     
     //parse or compute preprocessing data (multinomConst is not needed)
     if (ucs.length()==0){
         ucs = mapToUnique(colSumsInt_helper(counts, nthreads));
@@ -353,13 +353,8 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteri
     std::vector<double> psSTD(nmodels*footlen); Mat<double> ps = asMat(psSTD, nmodels);
     parseModels(models, Vec<double>(0,0), rs, Mat<double>(0,0,0));//we only care about the rs
     
-    //allocating some temporary memory
-    std::vector<double> tmpNB(uniqueCS.length()*nmodels);
     
-    if (type=="indep"){//independent negative binomials, fit both mu and r
-        fitNBs_core(postMat, mus, rs, preproc, asMat(tmpNB, nmodels), tol=tol, nthreads=nthreads);
-        
-    } else if (type=="nofit" || type=="pois"){
+    if (type=="nofit" || type=="pois"){
         //fit only the mus
         //if pois is selected, set r to Inf
         //inverse transformation: the column sums from the unique column sums
@@ -367,10 +362,31 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteri
         //fit only the mus
         fitMeans_core(colsums, postMat, mus, nthreads);
         if (type=="pois"){ for (int i = 0; i < nmodels; ++i) {rs[i] = INFINITY; } }
-    } else if (type=="dep"){//constrain the NBs to have the same r
-        double r = rs[0];
-        fitNBs_1r_core(postMat, mus, &r, preproc, asMat(tmpNB, nmodels), tol, nthreads);
-        for (int i = 0; i < nmodels; ++i){ rs[i] = r; }
+    }  else if (type=="indep" || type=="dep"){
+        //allocating some temporary memory
+        std::vector<double> cpost_mem(uniqueCS.length()*nmodels);
+        Mat<double> cpost = asMat(cpost_mem, uniqueCS.length());
+        //collapse columns of the posterior matrix with the same total count
+        //std::cout << "collapsing posteriors" << std::endl;
+        collapsePosteriors_core(cpost, postMat, preproc, nthreads);
+        if (type == "dep"){//constrain the NBs to have the same r
+            double r = rs[0];
+            //std::cout << "calling fitNBs_1r_core" << std::endl;
+            fitNBs_1r_core(preproc.uniqueCS, cpost, mus, &r, tol, nthreads);
+            for (int i = 0; i < nmodels; ++i){ rs[i] = r; }
+        } else {//each NB has its own r
+            //transpose the cpost matrix
+            //std::cout << "transposing matrix" << std::endl;
+            std::vector<double> tcpost_mem(cpost_mem.size());
+            Mat<double> tcpost = asMat(tcpost_mem, nmodels); int nu = cpost.ncol;
+            for (int m = 0; m < nmodels; ++m){
+                double* S = cpost.ptr + m;
+                double* D = tcpost.colptr(m);
+                for (int i = 0; i < nu; ++i, S += nmodels) D[i] = *S;
+            }
+            //std::cout << "calling fitNBs_core" << std::endl;
+            fitNBs_core(preproc.uniqueCS, tcpost, mus, rs, tol, nthreads);
+        }
     } else Rcpp::stop("Invalid fitting method provided: must be one among 'indep', 'nofit', 'pois' and 'dep'.");
     
     fitMultinoms_core(counts, postMat, ps, nthreads);

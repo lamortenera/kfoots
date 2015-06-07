@@ -53,6 +53,15 @@ NULL
 #' @param verbose print some output during execution
 #' @param seqlens Length of each sequence of observations. The number of columns
 #'     of the count matrix should equal \code{sum(seqlens)}.
+#' @param split4speed Add artificial breaks to speed-up the forward-backward
+#'     algorithm. If \code{framework=="HMM"} and if multiple threads are used,
+#'     the count matrix, which is already split according to \code{seqlens}, is
+#'     split even further so that each thread can be assigned an equal amount
+#'     of observations in the forward-backward algorithm. These artificial breaks
+#'     usually have a small impact in the final parameters, and they improve the
+#'     scalability with the number of cores, especially when the number of sequences
+#'     is small compared to the number of cores. The artificial breaks are 
+#'     removed after the training phase for computing the final state assignments. 
 #' @return a list with, among other, the following parameters:
 #'     \item{models}{a list containing the parameters of each model
 #'     (mixture components or emission probabilities). Each element of 
@@ -73,7 +82,7 @@ NULL
 #' @export
 kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NULL, initP=NULL,
             tol = 1e-4, maxiter=200, nthreads=1, nbtype=c("dep","indep","pois"), init=c("pca", "counts", "rnd"), init.nlev=20,
-            verbose=TRUE, seqlens=ncol(counts)){
+            verbose=TRUE, seqlens=ncol(counts), split4speed=FALSE){
     
     if (nthreads < 0) {
         warning("non-positive value provided for variable 'nthreads', using 1 thread")
@@ -107,11 +116,19 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
     
     if (framework=="HMM"){
         #make sure that the seqlens argument is all right
+        if (any(seqlens < 0)) stop("sequence lengths must be positive")
+        seqlens <- seqlens[seqlens>0]
         if (sum(seqlens) < nloci){
             warning("the provided seqlens do not add up to the total input length (ncol(counts)), adding a chunk to cover all the input")
             seqlens[length(seqlens)+1] <- nloci - sum(seqlens)
         } else if (sum(seqlens) > nloci){
             stop("invalid value for seqlens, the chunks sum up to more than the total input length")
+        }
+        if (split4speed){
+            s4s <- refineSplits(seqlens, nthreads)
+            seqlens <- s4s$newlens
+        } else if (length(seqlens)<nthreads && verbose){
+            message("less sequences than threads, use option 'split4speed' to take fully advantage of all threads")
         }
     }
     
@@ -234,6 +251,20 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
     interrupt=function(i){
         if (verbose) cat("User interrupt detected, stopping main loop and returning current data\n")
     })
+    #restore the original sequence splits and compute viterbi path
+    if (framework=="HMM"){
+        lLikMat(lliks=lliks, counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)
+        if (split4speed) {
+            initP <- initP[,s4s$origstarts, drop=F]
+            seqlens <- s4s$oldlens
+        }
+        vit <- viterbi(initP, trans, lliks, seqlens)
+        #recompute posterior matrix with the original sequence splits
+        if (split4speed){
+            res <- forward_backward(posteriors=posteriors, initP, trans, lliks, seqlens, nthreads=nthreads)
+            loglik <- res$tot_llik
+        }
+    }
     
     #set the histone mark names in the models object
     for (i in seq_along(models)){
@@ -250,16 +281,34 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
     
     #if framework==HMM, add init and transition probs and compute viterbi path
     if (framework=="HMM"){
+        result$viterbi <- vit
         result$initP <- initP
         result$trans <- trans
-        lLikMat(lliks=lliks, counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)
-        result$viterbi <- viterbi(initP, trans, lliks, seqlens)
     } else {
     #if framework==MM, add the mixture coefficients
         result$mix_coeff <- mix_coeff
     }
     result
 }
+
+#compute splits for the count matrix such that:
+#1. already contain the input splits
+#2. allow optimal parallelization with a given number of threads
+refineSplits <- function(slens, nthreads){
+    slens <- slens[slens > 0]
+    stopifnot(nthreads > 0)
+    totlen <- sum(slens)
+    nthreads <- min(totlen, nthreads)
+    
+    splitIdx <- cumsum(slens)
+    newsplitIdx <- round((1:nthreads)*totlen/nthreads)
+    allSplits <- sort(unique(c(splitIdx, newsplitIdx)))
+    
+    origStarts <- c(1, 1+match(splitIdx[-length(splitIdx)], allSplits))
+    newlens <- diff(c(0, allSplits))
+    list(newlens=newlens, oldlens=slens, origstarts=origStarts)
+}
+
 
 isProbVector <- function(v, tol=1e-9){
     all(v >= 0) && compare(sum(v), 1, tol)

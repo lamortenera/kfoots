@@ -1,9 +1,162 @@
 #include <Rcpp.h>
 #include "core.cpp"
+#include "schedule.cpp"
+
+template <typename T>
+static inline bool allequal(const T& a, const T& b) {return a==b;}
+template <typename T, typename... S>
+static inline bool allequal(const T& a, const T& b, const T& c, const S&... d){ 
+    return a==b && allequal(a, c, d...); 
+}
+
+//temporary storage needed by fb_iter
+struct FBtmp {
+    int nstates;
+    std::vector<double> mem;
+    Vec<double> backward;
+    Vec<double> new_backward;
+    Mat<double> tmp;
+    FBtmp(int ns) : nstates(ns), mem(ns*(ns+2)) {
+        double* start = mem.data();
+        backward = Vec<double>(start, nstates);
+        new_backward = Vec<double>(start + nstates, nstates);
+        tmp = Mat<double>(start + 2*nstates, nstates, nstates);
+    }
+};
+
+//forward backward iteration for one sequence of observations
+//posteriors: at the beginning it doesn't matter, at the end, the posterior probabilities
+//eprobs: at the beginning and at the end, the emission probabilities
+//eprobs and prosteriors have the same dimensions. 
+//The rows are the states, the columns are the observations
+//initP: at the beginning and at the end the initial probabilities
+//new_initP: at the beginning it doesn't matter, at the end the fitted initial probabilitites
+//trans: at the beginning and end, the transition probabilitites
+//new_trans: at the beginning, it doesn't matter, at the end the new transition
+//probabilities ARE ADDED to the initial values, unnormalized, to allow accumulation
+//llik: at the beginning, it doesn't matter, at the end the log likelihood of
+//this sequence is ADDED
+//storage: temporary storage needed by the function. You can provided this arg
+//for efficiency, but you don't need to.
+inline void fb_iter(Mat<double> eprobs, Mat<double> posteriors, 
+                    Vec<double> initP, Vec<double> new_initP, 
+                    Mat<double> trans, Mat<double> new_trans, long double& llik,
+                    FBtmp& storage){
+    int nobs = eprobs.ncol;
+    int nstates = eprobs.nrow;
+    if (nobs != posteriors.ncol || 
+        !allequal(nstates, posteriors.nrow, initP.len, new_initP.len, 
+                    trans.ncol, trans.nrow, new_trans.nrow, new_trans.ncol, 
+                    storage.nstates)){
+        Rcpp::stop("invalid dimensions of input arrays");
+    }
+    if (nobs == 0) return;
+    /* FORWARD LOOP */
+    /* first iteration is from fictitious start state */
+    {
+        double cf = 0;//scaling factor
+        double* emissprob = eprobs.colptr(0);
+        double* forward = posteriors.colptr(0);
+        for (int r = 0; r < nstates; ++r){
+            double p = emissprob[r]*initP[r];
+            forward[r] = p;
+            cf += p;
+        }
+        if (cf==0) Rcpp::stop("underflow error");
+        for (int r = 0; r < nstates; ++r){
+            forward[r] = forward[r]/cf;
+        }
+        llik += log(cf);
+    }
+    /* all other iterations */
+    for (int i = 0 + 1; i < nobs; ++i){
+        double cf = 0;//scaling factor
+        double* emissprob = eprobs.colptr(i);
+        double* forward = posteriors.colptr(i);
+        double* last_forward = posteriors.colptr(i-1);
+    
+        for (int t = 0; t < nstates; ++t){
+            double* transcol = trans.colptr(t);
+            double acc = 0;
+            for (int s = 0; s < nstates; ++s){
+                acc += last_forward[s]*transcol[s];
+            }
+            acc *= emissprob[t];
+            forward[t] = acc;
+            cf += acc;
+        }
+        if (cf==0) Rcpp::stop("underflow error");
+        for (int t = 0; t < nstates; ++t){
+            forward[t] = forward[t]/cf;
+        }
+        llik += log(cf);
+    }
+    
+    /* BACKWARD LOOP */
+    /* we don't keep the backward matrix, only a 'backward' column */
+    /* this gets replaced by 'new_backward' at each iteration */
+    /* first iteration set backward to 1/k, 
+     * last column of posteriors is already ok */
+    
+    Vec<double> backward = storage.backward;
+    Vec<double> new_backward = storage.new_backward;
+    Mat<double> tmp = storage.tmp;
+    
+    for (int r = 0; r < nstates; ++r){
+        backward[r] = 1.0/nstates;
+    }
+    for (int i = nobs-2; i >= 0; --i){
+        double* emissprob = eprobs.colptr(i+1);
+        double* posterior = posteriors.colptr(i);
+        double cf = 0;
+        double norm = 0;
+        /* joint probabilities and backward vector */
+        for (int s = 0; s < nstates; ++s){
+            //the forward variable is going to be overwritten with the posteriors
+            double pc = posterior[s];
+            double acc = 0;
+            
+            for (int t = 0; t < nstates; ++t){
+                double p = trans(s, t)*emissprob[t]*backward[t];
+                tmp(s, t) = pc*p;
+                acc += p;
+            }
+            
+            new_backward[s] = acc;
+            cf += acc;
+        }
+        if (cf==0) Rcpp::stop("underflow error");
+        /* update backward vector */
+        for (int s = 0; s < nstates; ++s){
+            backward[s] = new_backward[s]/cf;
+            norm += backward[s]*posterior[s];
+        }
+        /* update transition probabilities */
+        for (int t = 0, e = nstates*nstates; t < e; ++t){
+            new_trans[t] += tmp[t]/(norm*cf);
+        }
+        /* get posteriors */
+        for (int s = 0; s < nstates; ++s){
+            posterior[s] = posterior[s]*backward[s]/norm;
+        }
+    }
+    /* set new_initP */
+    double* posterior = posteriors.colptr(0);
+    for (int r = 0; r < nstates; ++r){
+        new_initP[r] = posterior[r];
+    }
+}
+
+inline void fb_iter(Mat<double> eprobs, Mat<double> posteriors, 
+                    Vec<double> initP, Vec<double> new_initP, 
+                    Mat<double> trans, Mat<double> new_trans, long double& llik){
+    FBtmp storage(eprobs.nrow);
+    fb_iter(eprobs, posteriors, initP, new_initP, trans, new_trans, llik, storage);
+}
 
 
-static inline double forward_backward_core(    Mat<double> initPs, Mat<double> trans, Mat<double> lliks, Vec<int> seqlens, 
-                                                            Mat<double> posteriors, Mat<double> new_trans, Mat<double> new_initPs, int nthreads){
+static inline double fb_core(Mat<double> initPs, Mat<double> trans, Mat<double> lliks, Vec<int> seqlens, 
+                             Mat<double> posteriors, Mat<double> new_trans, Mat<double> new_initPs, int nthreads){
     nthreads = std::max(1, nthreads);
     
     int nrow = lliks.nrow;
@@ -18,22 +171,26 @@ static inline double forward_backward_core(    Mat<double> initPs, Mat<double> t
     
     long double tot_llik = 0;
     
+    //figure out how to assign the chromosomes to the threads
+    //covert seqlens to double
+    std::vector<double> jobSize(nchunk);
+    for (int i = 0; i < nchunk; ++i) jobSize[i] = seqlens[i];
+    //get the assignments
+    std::vector<int> breaks = scheduleJobs(asVec(jobSize), nthreads);
     
     #pragma omp parallel num_threads(nthreads)
     {
         //each thread gets one copy of these temporaries
-        std::vector<double> tmpSTD(nrow*nrow, 0); 
         std::vector<double> thread_new_transSTD(nrow*nrow, 0); 
-        std::vector<double> backward(nrow, 0);
-        std::vector<double> new_backward(nrow, 0);
-        long double thread_llik = 0;
-        
-        Mat<double> tmp = asMat(tmpSTD, nrow);
         Mat<double> thread_new_trans = asMat(thread_new_transSTD, nrow);
-        
-        /* transform the lliks matrix to the original space (exponentiate). 
+        long double thread_llik = 0;
+        FBtmp thread_tmp(nrow);
+               
+        /* transform the log likelihoods to probabilities (exponentiate). 
          * A column-specific factor is multiplied to obtain a better numerical
-         * stability */
+         * stability. This tends to be the bottle-neck of the whole
+         * algorithm, but it is indispensable, and it scales well with the
+         * number of cores.*/
         #pragma omp for schedule(static) reduction(+:tot_llik)
         for (int c = 0; c < ncol; ++c){
             double* llikcol = lliks.colptr(c);
@@ -50,102 +207,18 @@ static inline double forward_backward_core(    Mat<double> initPs, Mat<double> t
         }
         
         /* Do forward and backward loop for each chunk (defined by seqlens)
-         * Chunks might have very different lengths (that's why dynamic schedule). */
-        #pragma omp for schedule(dynamic,1) nowait
-        for (int o = 0; o < nchunk; ++o){
-            int chunk_start = chunk_starts[o];
-            int chunk_end =  chunk_start + seqlens[o];
-            double* initP = initPs.colptr(o);
-            
-            /* FORWARD LOOP */
-            /* first iteration is from fictitious start state */
-            {
-                double cf = 0;//scaling factor
-                double* emissprob = lliks.colptr(chunk_start);
-                double* forward = posteriors.colptr(chunk_start);
-                for (int r = 0; r < nrow; ++r){
-                    double p = emissprob[r]*initP[r];
-                    forward[r] = p;
-                    cf += p;
-                }
-                if (cf==0) Rcpp::stop("underflow error");
-                for (int r = 0; r < nrow; ++r){
-                    forward[r] = forward[r]/cf;
-                }
-                thread_llik += log(cf);
-            }
-            /* all other iterations */
-            for (int i = chunk_start + 1; i < chunk_end; ++i){
-                double cf = 0;//scaling factor
-                double* emissprob = lliks.colptr(i);
-                double* forward = posteriors.colptr(i);
-                double* last_forward = posteriors.colptr(i-1);
-            
-                for (int t = 0; t < nrow; ++t){
-                    double* transcol = trans.colptr(t);
-                    double acc = 0;
-                    for (int s = 0; s < nrow; ++s){
-                        acc += last_forward[s]*transcol[s];
-                    }
-                    acc *= emissprob[t];
-                    forward[t] = acc;
-                    cf += acc;
-                }
-                if (cf==0) Rcpp::stop("underflow error");
-                for (int t = 0; t < nrow; ++t){
-                    forward[t] = forward[t]/cf;
-                }
-                thread_llik += log(cf);
-            }
-            
-            /* BACKWARD LOOP */
-            /* we don't keep the backward matrix, only a 'backward' column */
-            /* this gets replaced by 'new_backward' at each iteration */
-            /* first iteration set backward to 1/k, 
-             * last column of posteriors is already ok */
-            for (int r = 0; r < nrow; ++r){
-                backward[r] = 1.0/nrow;
-            }
-            for (int i = chunk_end-2; i >= chunk_start; --i){
-                double* emissprob = lliks.colptr(i+1);
-                double* posterior = posteriors.colptr(i);
-                double cf = 0;
-                double norm = 0;
-                /* joint probabilities and backward vector */
-                for (int s = 0; s < nrow; ++s){
-                    //the forward variable is going to be overwritten with the posteriors
-                    double pc = posterior[s];
-                    double acc = 0;
-                    
-                    for (int t = 0; t < nrow; ++t){
-                        double p = trans(s, t)*emissprob[t]*backward[t];
-                        tmp(s, t) = pc*p;
-                        acc += p;
-                    }
-                    
-                    new_backward[s] = acc;
-                    cf += acc;
-                }
-                if (cf==0) Rcpp::stop("underflow error");
-                /* update backward vector */
-                for (int s = 0; s < nrow; ++s){
-                    backward[s] = new_backward[s]/cf;
-                    norm += backward[s]*posterior[s];
-                }
-                /* update transition probabilities */
-                for (int t = 0, e = nrow*nrow; t < e; ++t){
-                    thread_new_trans[t] += tmp[t]/(norm*cf);
-                }
-                /* get posteriors */
-                for (int s = 0; s < nrow; ++s){
-                    posterior[s] = posterior[s]*backward[s]/norm;
-                }
-            }
-            /* set new_initP */
-            double* new_initP = new_initPs.colptr(o);
-            double* posterior = posteriors.colptr(chunk_start);
-            for (int r = 0; r < nrow; ++r){
-                new_initP[r] = posterior[r];
+         * Chunks might have very different lengths (that's why they have been scheduled). */
+        #pragma omp for schedule(static) nowait
+        for (int thread = 0; thread < nthreads; ++thread){
+            for (int o = breaks[thread]; o < breaks[thread+1]; ++o){
+                //o is the index that identifies the sequence
+                int chunk_start = chunk_starts[o];
+                int chunk_end =  chunk_start + seqlens[o];
+                
+                fb_iter(lliks.subsetCol(chunk_start, chunk_end), 
+                        posteriors.subsetCol(chunk_start, chunk_end), 
+                        initPs.getCol(o), new_initPs.getCol(o), trans, 
+                        thread_new_trans, thread_llik, thread_tmp);
             }
         }
         //protected access to the shared variables
@@ -169,6 +242,7 @@ static inline double forward_backward_core(    Mat<double> initPs, Mat<double> t
     
     return (double) tot_llik;
 }
+
 
 
 using namespace Rcpp;
@@ -202,7 +276,7 @@ List forward_backward(NumericMatrix initP, NumericMatrix trans, NumericMatrix ll
     
     NumericMatrix newTrans(trans.nrow(), trans.ncol());
     NumericMatrix newInitP(initP.nrow(), initP.ncol());
-    double tot_llik = forward_backward_core(asMat(initP), asMat(trans), asMat(lliks), asVec(seqlens), asMat(posteriors), asMat(newTrans), asMat(newInitP), nthreads);
+    double tot_llik = fb_core(asMat(initP), asMat(trans), asMat(lliks), asVec(seqlens), asMat(posteriors), asMat(newTrans), asMat(newInitP), nthreads);
     return List::create(_("posteriors")=posteriors, _("tot_llik")=tot_llik, _("new_trans")=newTrans, _("new_initP")=newInitP);
 }
 
@@ -299,3 +373,21 @@ Rcpp::IntegerVector orderColumns(Rcpp::IntegerMatrix mat){
     return order;
 }
 */
+
+
+// [[Rcpp::export]]
+Rcpp::List testSchedule(Rcpp::NumericVector jobs, int nthreads, int type){
+    std::vector<int> breaks(nthreads+1);
+    Vec<double> jobSize = asVec(jobs);
+    if (type == 0){
+        scheduleNaive(jobSize, breaks);
+    } else if (type == 1){
+        scheduleGreedy(jobSize, breaks);
+    } else if (type == 2){
+        scheduleOptimal(jobSize, breaks);
+    } else Rcpp::stop("invalid type");
+    double makespan = getMakespan(jobSize, breaks);
+    return Rcpp::List::create(  
+        Rcpp::Named("makespan")=makespan, 
+        Rcpp::Named("breaks")=Rcpp::wrap(breaks));
+}
