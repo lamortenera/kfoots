@@ -1,7 +1,7 @@
 kfoots
 ======
 
-R package to fit multivariate discrete probability distributions to count data
+R package to fit multivariate discrete probability distributions to count data. This package provides the core statistical fitting functions that the epicseg package is based on.
 
 ## Installation
 
