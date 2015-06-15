@@ -48,6 +48,19 @@ BEGIN_RCPP
     return __result;
 END_RCPP
 }
+// testColPost
+Rcpp::NumericMatrix testColPost(Rcpp::NumericMatrix post, Rcpp::List m2u, int nthreads);
+RcppExport SEXP kfoots_testColPost(SEXP postSEXP, SEXP m2uSEXP, SEXP nthreadsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject __result;
+    Rcpp::RNGScope __rngScope;
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type post(postSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type m2u(m2uSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
+    __result = Rcpp::wrap(testColPost(post, m2u, nthreads));
+    return __result;
+END_RCPP
+}
 // tabFast
 Rcpp::IntegerVector tabFast(Rcpp::IntegerVector counts);
 RcppExport SEXP kfoots_tabFast(SEXP countsSEXP) {

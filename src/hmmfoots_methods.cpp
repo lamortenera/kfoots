@@ -280,6 +280,8 @@ List forward_backward(NumericMatrix initP, NumericMatrix trans, NumericMatrix ll
     return List::create(_("posteriors")=posteriors, _("tot_llik")=tot_llik, _("new_trans")=newTrans, _("new_initP")=newInitP);
 }
 
+
+
 //' Viterbi algorithm
 //'
 //' Standard viterbi algorithm in the log space
@@ -390,4 +392,18 @@ Rcpp::List testSchedule(Rcpp::NumericVector jobs, int nthreads, int type){
     return Rcpp::List::create(  
         Rcpp::Named("makespan")=makespan, 
         Rcpp::Named("breaks")=Rcpp::wrap(breaks));
+}
+
+//static inline void collapsePosteriors_core(Mat<double> cpost, Mat<double> post, NMPreproc& preproc, int nthreads=1)
+
+// [[Rcpp::export]]
+Rcpp::NumericMatrix testColPost(Rcpp::NumericMatrix post, Rcpp::List m2u, int nthreads){
+    Rcpp::IntegerVector values = Rcpp::as<Rcpp::IntegerVector>(m2u["values"]);
+    Rcpp::IntegerVector map = Rcpp::as<Rcpp::IntegerVector>(m2u["map"]);
+    if (post.ncol() != map.length()) Rcpp::stop("posteriors doesn't match with m2u");
+    
+    Rcpp::NumericMatrix smallerPost(post.nrow(), values.length());
+    Vec<double> foo; NMPreproc preproc(asVec(values), asVec(map), foo);
+    collapsePosteriors_core(asMat(smallerPost), asMat(post), preproc);
+    return smallerPost;
 }

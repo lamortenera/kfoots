@@ -353,7 +353,7 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteri
     std::vector<double> psSTD(nmodels*footlen); Mat<double> ps = asMat(psSTD, nmodels);
     parseModels(models, Vec<double>(0,0), rs, Mat<double>(0,0,0));//we only care about the rs
     
-    
+     
     if (type=="nofit" || type=="pois"){
         //fit only the mus
         //if pois is selected, set r to Inf

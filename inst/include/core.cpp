@@ -480,7 +480,13 @@ static void fitMultinoms_core(TMat<int> counts, Mat<double> posteriors, Mat<doub
             double* psCol = ps.colptr(mod);
             double sum = 0;
             for (int row = 0; row < nrow; ++row){sum += psCol[row];}
-            for (int row = 0; row < nrow; ++row){psCol[row] /= sum;}
+            if (sum > 0){
+                for (int row = 0; row < nrow; ++row){psCol[row] /= sum;}
+            } else {
+                //no training data... use uniform distr.
+                double unif = 1.0/nrow;
+                for (int row = 0; row < nrow; ++row){psCol[row] = unif;}
+            }
         }
     }
 }

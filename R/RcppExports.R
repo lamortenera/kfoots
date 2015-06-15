@@ -42,6 +42,10 @@ testSchedule <- function(jobs, nthreads, type) {
     .Call('kfoots_testSchedule', PACKAGE = 'kfoots', jobs, nthreads, type)
 }
 
+testColPost <- function(post, m2u, nthreads) {
+    .Call('kfoots_testColPost', PACKAGE = 'kfoots', post, m2u, nthreads)
+}
+
 tabFast <- function(counts) {
     .Call('kfoots_tabFast', PACKAGE = 'kfoots', counts)
 }
