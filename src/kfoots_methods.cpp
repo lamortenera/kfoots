@@ -84,7 +84,7 @@ Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector mix_co
 
 //' Group unique values of a vector
 //'
-//' @param v a vector of integers. If they are not integers they will be
+//' @param values a vector of integers. If they are not integers they will be
 //'     casted to integers.
 //' @return a list with the following items:
 //'        \item{values}{unique and sorted values of \code{v}}

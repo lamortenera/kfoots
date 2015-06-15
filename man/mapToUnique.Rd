@@ -7,7 +7,7 @@
 mapToUnique(values)
 }
 \arguments{
-\item{v}{a vector of integers. If they are not integers they will be
+\item{values}{a vector of integers. If they are not integers they will be
 casted to integers.}
 }
 \value{

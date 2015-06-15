@@ -24,7 +24,7 @@ tpca <- function(counts, center=T, scale=F, besselCorr=T, nthreads=1){
         d <- F
     }
     
-    edc <- eigen(mycov, symm=T)
+    edc <- eigen(mycov, symmetric=T)
     #force eigenvalues to be all positive (or null)
     edc$values[edc$values < 0] <- 0
     sdev <- sqrt(edc$values)
@@ -55,21 +55,21 @@ initAlgo <- function(counts, k, nlev=5, nthreads=1, nbtype=c("indep", "dep", "po
     nmark <- nrow(counts)
     priormus <- rowMeans(counts)
     if (axes == "counts"){
-        dog("splitting axes", v=verbose)
+        dog("splitting axes", verbose=verbose)
         pca <- NULL
         coords <- splitAxesInt(counts, nlev, nthreads=nthreads)
     } else {
-        dog("performing PCA on the count matrix", v=verbose)
+        dog("performing PCA on the count matrix", verbose=verbose)
         pca <- tpca(counts, nthreads=nthreads)
         #scores has the same format as counts
         scores <- pca$tx
         #linearly transforms the scores to positive integers from 0 to 999
-        dog("splitting axes", v=verbose)
+        dog("splitting axes", verbose=verbose)
         coords <- splitAxes(scores, nlev, nthreads=nthreads)
     }
     
     onedclust <- lapply(1:nrow(counts), function(i) 0:(nlev-1))
-    dog("computing average seeds", v=verbose)
+    dog("computing average seeds", verbose=verbose)
     onedcenters <- clusterAverages2(counts, coords, onedclust, nthreads)
     mus <- onedcenters$mus*(1-pprior) + pprior*priormus
     sizes <- onedcenters$sizes
@@ -85,14 +85,14 @@ initAlgo <- function(counts, k, nlev=5, nthreads=1, nbtype=c("indep", "dep", "po
     
     #get a suitable r for the kullback-leibler divergence (even though it doesn't change much...)
     #and for the final models
-    dog("estimating r parameter", v=verbose)
+    dog("estimating r parameter", verbose=verbose)
     r <- Inf
     ucs <- mapToUnique(colSumsInt(counts, nthreads))
     if (nbtype=="indep" || nbtype=="dep") r <- fitNB(ucs)$r
-    dog("computing KL divergences", v=verbose)
+    dog("computing KL divergences", verbose=verbose)
     dmat <- KL_dist_mat(mus, r, nthreads=nthreads)
     #do hierarchical clustering
-    dog("hierarchical clustering", v=verbose)
+    dog("hierarchical clustering", verbose=verbose)
     hc <- hclust(as.dist(dmat), method="average", members=sizes)
     clust <- cutree(hc, k)
     #make partition matrix
@@ -102,7 +102,7 @@ initAlgo <- function(counts, k, nlev=5, nthreads=1, nbtype=c("indep", "dep", "po
     multidclust <- lapply(seq_along(onedclust), function(mark) {partition[mark, ][onedclust[[mark]] + 1]-1})
     csizes <- sumAt(sizes, clust, k, F)
     #prepare posterior matrix
-    dog("filling in posterior matrix", v=verbose)
+    dog("filling in posterior matrix", verbose=verbose)
     posteriors <- fillPosteriors(coords, multidclust, k, nthreads)
     priorcol <- csizes/ncol(counts)
     posteriors <- (1-pprior)*posteriors + pprior*priorcol
@@ -111,7 +111,7 @@ initAlgo <- function(counts, k, nlev=5, nthreads=1, nbtype=c("indep", "dep", "po
     #dummy variable, not needed...
     old_models <- list()
     for (i in 1:k){ old_models[[i]] <- list(mu=-1, r=-1, ps=numeric(nrow(counts))) }
-    dog("fitting models", v=verbose)
+    dog("fitting models", verbose=verbose)
     models <- fitModels(counts, posteriors, old_models, ucs=ucs, type=nbtype, nthreads=nthreads)
     for (i in seq_along(models)) names(models[[i]]$ps) <- rownames(counts)
     mix_coeff <- csizes/sum(csizes)

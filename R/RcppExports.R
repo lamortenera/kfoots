@@ -12,10 +12,16 @@
 #' Columns are datapoints and rows are states.
 #' @param seqlens length of each subsequence of datapoints (set this to ncol(lliks)
 #' if there is only one sequence).
+#' @param posteriors the posteriors matrix where the posteriors will be written.
+#' its value when the function is called does not matter, but it needs to have
+#' the right dimensions (rows are states and columns are observations).
+#' @param nthreads number of threads used. Sequences of observations are
+#' processed independently by different threads (if \code{length(seqlens) > 1}).
 #' @return a list with the following arguments:
-#'    \item{posteriors}{posterior probability of being in a certain state for a certain datapoint}
-#'    \item{tot_llik}{total log-likelihood of the data given the hmm model}
-#'    \item{new_trans}{update for the transition probabilities (it is already normalized)}
+#'    \item{posteriors}{posterior probability of being in a certain state for a certain datapoint.
+#'     Same matrix used as input argument.}
+#'    \item{tot_llik}{total log-likelihood of the data given the hmm model.}
+#'    \item{new_trans}{update for the transition probabilities (it is already normalized).}
 #' @export
 forward_backward <- function(initP, trans, lliks, seqlens, posteriors, nthreads = 1L) {
     .Call('kfoots_forward_backward', PACKAGE = 'kfoots', initP, trans, lliks, seqlens, posteriors, nthreads)
@@ -100,7 +106,7 @@ llik2posteriors <- function(lliks, mix_coeff, posteriors, nthreads = 1L) {
 
 #' Group unique values of a vector
 #'
-#' @param v a vector of integers. If they are not integers they will be
+#' @param values a vector of integers. If they are not integers they will be
 #'     casted to integers.
 #' @return a list with the following items:
 #'        \item{values}{unique and sorted values of \code{v}}

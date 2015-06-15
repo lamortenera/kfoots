@@ -1,6 +1,6 @@
 #include <Rcpp.h>
 #include "array.cpp"
-#include "tabbing.hpp"
+#include "tabbing.h"
 #include <algorithm> 
 #include <unordered_map>
 #include <R_ext/BLAS.h>

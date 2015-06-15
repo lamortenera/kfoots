@@ -331,7 +331,7 @@ checkModels <- function(models, k, nrow, nbtype){
 #' Maximum Likelihood Estimate for the parameters of a negative binomial distribution
 #' generating a specified vector of counts. The MLE for the negative binomial
 #' should not be used with a small number of datapoints, it is known to be
-#' biased. Internally, this function is using the brent method to find the
+#' biased. Internally, this function is using Brent's method to find the
 #' optimal dispersion parameter.
 #' @param counts a vector of counts. If a list is given, then it is assumed 
 #'     to be the result of the function \code{mapToUnique(counts)}
@@ -340,6 +340,7 @@ checkModels <- function(models, k, nrow, nbtype){
 #'     not specified, equal weights will be assumed
 #' @param old_r an initial value for the size parameter of the negative binomial.
 #'     If not specified the methods of moments will be used for an initial guess.
+#' @param tol numerical tolerance of the fitting algorithm
 #' @param nthreads number of threads. Too many threads might worsen the 
 #'     performance
 #' @return A list with the parameters of the negative binomial.

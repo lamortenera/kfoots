@@ -16,12 +16,20 @@ Columns are datapoints and rows are states.}
 
 \item{seqlens}{length of each subsequence of datapoints (set this to ncol(lliks)
 if there is only one sequence).}
+
+\item{posteriors}{the posteriors matrix where the posteriors will be written.
+its value when the function is called does not matter, but it needs to have
+the right dimensions (rows are states and columns are observations).}
+
+\item{nthreads}{number of threads used. Sequences of observations are
+processed independently by different threads (if \code{length(seqlens) > 1}).}
 }
 \value{
 a list with the following arguments:
-   \item{posteriors}{posterior probability of being in a certain state for a certain datapoint}
-   \item{tot_llik}{total log-likelihood of the data given the hmm model}
-   \item{new_trans}{update for the transition probabilities (it is already normalized)}
+   \item{posteriors}{posterior probability of being in a certain state for a certain datapoint.
+    Same matrix used as input argument.}
+   \item{tot_llik}{total log-likelihood of the data given the hmm model.}
+   \item{new_trans}{update for the transition probabilities (it is already normalized).}
 }
 \description{
 Forward-backward algorithm using the scaling technique.
