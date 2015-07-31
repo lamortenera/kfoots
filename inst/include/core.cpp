@@ -316,11 +316,13 @@ static inline void fitNBs_core(Vec<int> values, Mat<double> tposteriors, Vec<dou
     //nested parallel regions... this happens when nmod < nthreads
     int nthreads_outer = nmod > nthreads? nthreads : nmod;
     int nthreads_inner = ceil(((double)nthreads)/nmod);
-    omp_set_nested(true);
-    //make sure we're not using more than nthreads threads
-    omp_set_dynamic(true);
-    //fitting the negative binomials
     
+    #ifdef SUPPORT_OPENMP
+        omp_set_nested(true);
+        //make sure we're not using more than nthreads threads
+        omp_set_dynamic(true);
+        //fitting the negative binomials
+    #endif
     
     #pragma omp parallel for schedule(dynamic) num_threads(nthreads_outer)
     for (int mod = 0; mod < nmod; ++mod){
