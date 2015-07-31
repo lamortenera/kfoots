@@ -4,7 +4,24 @@
 #include <algorithm> 
 #include <unordered_map>
 #include <R_ext/BLAS.h>
-#include <parallel/algorithm>
+
+//parallel sorting. SUPPORT_OPENMP is not a guarantee that
+//the header parallel/algorithm is present, but I don't have better ideas
+//other than using autoconf...
+#ifdef SUPPORT_OPENMP
+    #include <parallel/algorithm>
+    template <class RandomAccessIterator>
+    inline void parallelSort(RandomAccessIterator first, RandomAccessIterator last, int nthreads){
+        __gnu_parallel::sort(first, last, __gnu_parallel::parallel_tag(nthreads));
+    }
+#else
+    template <class RandomAccessIterator>
+    inline void parallelSort(RandomAccessIterator first, RandomAccessIterator last, int /*nthreads*/){
+        std::sort(first, last);
+    }
+#endif
+
+
 
 //splits the range [0, len) into nthreads ranges of approximately same size
 //the ith range is [breaks[i], breaks[i+1])
@@ -443,7 +460,7 @@ Rcpp::IntegerMatrix splitAxes(Rcpp::NumericMatrix scores, int nsplit, int nthrea
 			avatars[i].second = i;
 		}
 		//sort it
-		__gnu_parallel::sort(avatars.begin(), avatars.end(), __gnu_parallel::parallel_tag(nthreads));
+		parallelSort(avatars.begin(), avatars.end(), nthreads);
 		//fill in the matrix
 		double mult = nsplit/((double)ncol);
 		#pragma omp parallel for num_threads(nthreads)

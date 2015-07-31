@@ -1,7 +1,7 @@
 /* This file gets automatically copied from your personal library to multiple projects.
 To modify it change the version in /project/ale/home/data/cppstubs/tabbing.h,
 do not modify this version */
-//timestamp: 2015-07-31 12:22:17.413463
+//timestamp: 2015-07-31 15:13:37.892022
 
 //functions for tabulating the values of an array of integers
 inline void shrink(std::vector<int>& v){
