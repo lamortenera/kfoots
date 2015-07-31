@@ -3,7 +3,9 @@
 #include <Rcpp.h>
 #include <stdexcept> 
 #include <iostream>
-#include <omp.h>
+#ifdef SUPPORT_OPENMP
+    #include <omp.h>
+#endif
 
 
 /* Matrix and vector classes.

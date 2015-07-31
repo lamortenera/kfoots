@@ -1,10 +1,13 @@
 #include "array.cpp"
-#include <omp.h>
 #include <algorithm> 
 #include <unordered_map>
 #include <Rcpp.h>
 #include <math.h>
 #include "optim.cpp"
+#ifdef SUPPORT_OPENMP
+    #include <omp.h>
+#endif
+
 
 //it would take too long to organize these headers properly, but conceptually, you should use only the following functions:
 //map2unique_core
