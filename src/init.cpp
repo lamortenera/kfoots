@@ -327,7 +327,7 @@ Rcpp::NumericMatrix rowdotprod(Rcpp::NumericMatrix counts, bool besselCorr=true,
 	return result;
 }
 
-
+/*
 //matrix multiplication. Parallelization is done on the columns of mat2 and mat3
 //that works only if you don't have to allocate mat3, otherwise R is faster
 // [[Rcpp::export]]
@@ -358,7 +358,7 @@ void matprod(Rcpp::NumericMatrix mat1, Rcpp::NumericMatrix mat2, Rcpp::NumericMa
 				M1, &nrow1, TM2, &nrow2, &zero, TM3, &nrow1);
 	}
 }
-
+*/
 
 template<typename TIter>
 inline void rangeImpl(double* min, double* max, TIter C, TIter E){
