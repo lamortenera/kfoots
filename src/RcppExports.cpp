@@ -138,19 +138,6 @@ BEGIN_RCPP
     return __result;
 END_RCPP
 }
-// matprod
-void matprod(Rcpp::NumericMatrix mat1, Rcpp::NumericMatrix mat2, Rcpp::NumericMatrix mat3, int nthreads);
-RcppExport SEXP kfoots_matprod(SEXP mat1SEXP, SEXP mat2SEXP, SEXP mat3SEXP, SEXP nthreadsSEXP) {
-BEGIN_RCPP
-    Rcpp::RNGScope __rngScope;
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type mat1(mat1SEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type mat2(mat2SEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type mat3(mat3SEXP);
-    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
-    matprod(mat1, mat2, mat3, nthreads);
-    return R_NilValue;
-END_RCPP
-}
 // discretizeRows
 Rcpp::IntegerMatrix discretizeRows(Rcpp::NumericMatrix scores, int nlevels, int nthreads);
 RcppExport SEXP kfoots_discretizeRows(SEXP scoresSEXP, SEXP nlevelsSEXP, SEXP nthreadsSEXP) {

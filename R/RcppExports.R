@@ -76,10 +76,6 @@ rowdotprod <- function(counts, besselCorr = TRUE, nthreads = 1L) {
     .Call('kfoots_rowdotprod', PACKAGE = 'kfoots', counts, besselCorr, nthreads)
 }
 
-matprod <- function(mat1, mat2, mat3, nthreads = 1L) {
-    invisible(.Call('kfoots_matprod', PACKAGE = 'kfoots', mat1, mat2, mat3, nthreads))
-}
-
 discretizeRows <- function(scores, nlevels, nthreads = 1L) {
     .Call('kfoots_discretizeRows', PACKAGE = 'kfoots', scores, nlevels, nthreads)
 }
