@@ -79,9 +79,9 @@ initAlgo <- function(counts, k, nlev=5, nthreads=1, nbtype=c("indep", "dep", "po
     
     if (sum(sizes>0) < k) stop("unable to find enough seeds, try to reduce the number of clusters")
     #discard empty clusters
-    mus <- mus[, sizes>0]
-    member <- member[sizes>0,]
-    sizes <- sizes[sizes>0]
+    mus <- mus[, sizes>0, drop=FALSE]
+    member <- member[sizes>0,, drop=FALSE]
+    sizes <- sizes[sizes>0, drop=FALSE]
     
     #get a suitable r for the kullback-leibler divergence (even though it doesn't change much...)
     #and for the final models
