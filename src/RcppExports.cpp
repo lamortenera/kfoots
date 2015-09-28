@@ -203,6 +203,16 @@ BEGIN_RCPP
     return __result;
 END_RCPP
 }
+// support_openmp
+bool support_openmp();
+RcppExport SEXP kfoots_support_openmp() {
+BEGIN_RCPP
+    Rcpp::RObject __result;
+    Rcpp::RNGScope __rngScope;
+    __result = Rcpp::wrap(support_openmp());
+    return __result;
+END_RCPP
+}
 // llik2posteriors
 Rcpp::List llik2posteriors(Rcpp::NumericMatrix lliks, Rcpp::NumericVector mix_coeff, Rcpp::NumericMatrix posteriors, int nthreads);
 RcppExport SEXP kfoots_llik2posteriors(SEXP lliksSEXP, SEXP mix_coeffSEXP, SEXP posteriorsSEXP, SEXP nthreadsSEXP) {

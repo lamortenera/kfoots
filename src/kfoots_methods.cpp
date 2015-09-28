@@ -2,6 +2,14 @@
 #include "core.cpp"
 #include <algorithm> 
 
+// [[Rcpp::export]]
+bool support_openmp(){
+    #ifdef SUPPORT_OPENMP
+        return true;
+    #else
+        return false;
+    #endif
+}
 
 static inline double llik2posteriors_core(Mat<double> lliks, Vec<double> mix_coeff, Mat<double> posteriors, int nthreads){
     long double tot = 0;

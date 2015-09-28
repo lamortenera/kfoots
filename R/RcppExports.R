@@ -96,6 +96,10 @@ findUniqueSeeds <- function(counts, permutation, k) {
     .Call('kfoots_findUniqueSeeds', PACKAGE = 'kfoots', counts, permutation, k)
 }
 
+support_openmp <- function() {
+    .Call('kfoots_support_openmp', PACKAGE = 'kfoots')
+}
+
 llik2posteriors <- function(lliks, mix_coeff, posteriors, nthreads = 1L) {
     .Call('kfoots_llik2posteriors', PACKAGE = 'kfoots', lliks, mix_coeff, posteriors, nthreads)
 }
