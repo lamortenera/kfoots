@@ -38,7 +38,13 @@ struct FBtmp {
 //this sequence is ADDED
 //storage: temporary storage needed by the function. You can provided this arg
 //for efficiency, but you don't need to.
-inline void fb_iter(Mat<double> eprobs, Mat<double> posteriors, 
+//return codes:
+//-2: everything fine
+//-1: invalid dimensions of input arrays
+//n>=0: at column n there was an underflow error
+const int FB_OK = -2;
+const int FB_WRONG_DIM = -1;
+inline int fb_iter(Mat<double> eprobs, Mat<double> posteriors, 
                     Vec<double> initP, Vec<double> new_initP, 
                     Mat<double> trans, Mat<double> new_trans, long double& llik,
                     FBtmp& storage){
@@ -48,9 +54,9 @@ inline void fb_iter(Mat<double> eprobs, Mat<double> posteriors,
         !allequal(nstates, posteriors.nrow, initP.len, new_initP.len, 
                     trans.ncol, trans.nrow, new_trans.nrow, new_trans.ncol, 
                     storage.nstates)){
-        Rcpp::stop("invalid dimensions of input arrays");
+        return FB_WRONG_DIM; //invalid dimensions of input arrays
     }
-    if (nobs == 0) return;
+    if (nobs == 0) return FB_OK;
     /* FORWARD LOOP */
     /* first iteration is from fictitious start state */
     {
@@ -62,7 +68,7 @@ inline void fb_iter(Mat<double> eprobs, Mat<double> posteriors,
             forward[r] = p;
             cf += p;
         }
-        if (cf==0) Rcpp::stop("underflow error");
+        if (cf==0) return 0;  //underflow error
         for (int r = 0; r < nstates; ++r){
             forward[r] = forward[r]/cf;
         }
@@ -85,7 +91,7 @@ inline void fb_iter(Mat<double> eprobs, Mat<double> posteriors,
             forward[t] = acc;
             cf += acc;
         }
-        if (cf==0) Rcpp::stop("underflow error");
+        if (cf==0) return i; //underflow error
         for (int t = 0; t < nstates; ++t){
             forward[t] = forward[t]/cf;
         }
@@ -125,7 +131,7 @@ inline void fb_iter(Mat<double> eprobs, Mat<double> posteriors,
             new_backward[s] = acc;
             cf += acc;
         }
-        if (cf==0) Rcpp::stop("underflow error");
+        if (cf==0) return i; //underflow error
         /* update backward vector */
         for (int s = 0; s < nstates; ++s){
             backward[s] = new_backward[s]/cf;
@@ -145,13 +151,15 @@ inline void fb_iter(Mat<double> eprobs, Mat<double> posteriors,
     for (int r = 0; r < nstates; ++r){
         new_initP[r] = posterior[r];
     }
+    
+    return FB_OK;;
 }
 
-inline void fb_iter(Mat<double> eprobs, Mat<double> posteriors, 
+inline int fb_iter(Mat<double> eprobs, Mat<double> posteriors, 
                     Vec<double> initP, Vec<double> new_initP, 
                     Mat<double> trans, Mat<double> new_trans, long double& llik){
     FBtmp storage(eprobs.nrow);
-    fb_iter(eprobs, posteriors, initP, new_initP, trans, new_trans, llik, storage);
+    return fb_iter(eprobs, posteriors, initP, new_initP, trans, new_trans, llik, storage);
 }
 
 
@@ -177,6 +185,8 @@ static inline double fb_core(Mat<double> initPs, Mat<double> trans, Mat<double> 
     for (int i = 0; i < nchunk; ++i) jobSize[i] = seqlens[i];
     //get the assignments
     std::vector<int> breaks = scheduleJobs(asVec(jobSize), nthreads);
+    int gretcode = FB_OK; //return code from fb_iter, aggregated across threads
+    int guflowchunk = -1; //chunk that caused the underflow
     
     #pragma omp parallel num_threads(nthreads)
     {
@@ -185,6 +195,8 @@ static inline double fb_core(Mat<double> initPs, Mat<double> trans, Mat<double> 
         Mat<double> thread_new_trans = asMat(thread_new_transSTD, nrow);
         long double thread_llik = 0;
         FBtmp thread_tmp(nrow);
+        int retcode = FB_OK; //return code from fb_iter
+        int uflowchunk = -1; //chunk that caused the underflow
                
         /* transform the log likelihoods to probabilities (exponentiate). 
          * A column-specific factor is multiplied to obtain a better numerical
@@ -210,27 +222,42 @@ static inline double fb_core(Mat<double> initPs, Mat<double> trans, Mat<double> 
          * Chunks might have very different lengths (that's why they have been scheduled). */
         #pragma omp for schedule(static) nowait
         for (int thread = 0; thread < nthreads; ++thread){
-            for (int o = breaks[thread]; o < breaks[thread+1]; ++o){
-                //o is the index that identifies the sequence
+            for (int o = breaks[thread]; o < breaks[thread+1] && retcode == FB_OK; ++o){
+                //o identifies the sequence/chunk
                 int chunk_start = chunk_starts[o];
                 int chunk_end =  chunk_start + seqlens[o];
                 
-                fb_iter(lliks.subsetCol(chunk_start, chunk_end), 
-                        posteriors.subsetCol(chunk_start, chunk_end), 
-                        initPs.getCol(o), new_initPs.getCol(o), trans, 
-                        thread_new_trans, thread_llik, thread_tmp);
+                retcode = fb_iter(lliks.subsetCol(chunk_start, chunk_end), 
+                                posteriors.subsetCol(chunk_start, chunk_end), 
+                                initPs.getCol(o), new_initPs.getCol(o), trans, 
+                                thread_new_trans, thread_llik, thread_tmp);
+                if (retcode >= 0) {//there was an underflow error
+                    uflowchunk = o;
+                }
             }
         }
         //protected access to the shared variables
         #pragma omp critical
         {
-            tot_llik += thread_llik;
-            for (int p = 0, q = nrow*nrow; p < q; ++p){
-                new_trans[p] += thread_new_trans[p];
+            //set gretcode to the smallest invalid retcode
+            if (retcode != FB_OK && gretcode == FB_OK){
+                gretcode = retcode;
+                guflowchunk = uflowchunk;
+            } else {
+                tot_llik += thread_llik;
+                for (int p = 0, q = nrow*nrow; p < q; ++p){
+                    new_trans[p] += thread_new_trans[p];
+                }
             }
         }
     }
-
+    //outside #pragma omp we can use exceptions :D
+    if (gretcode != FB_OK) {
+        if (gretcode == FB_WRONG_DIM) Rcpp::stop("Invalid array dimensions passed to 'fb_iter'");
+        Rcpp::stop("Underflow error at sequence:position @" + 
+        std::to_string(guflowchunk+1) + ":" + std::to_string(gretcode+1) + "@");
+    }
+    
     /* normalizing new_trans matrix */
     // The parallelization overhead might take longer than
     // this loop....
