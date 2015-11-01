@@ -202,6 +202,10 @@ Rcpp::List clusterAverages2(Rcpp::IntegerMatrix counts, Rcpp::IntegerMatrix coor
 	Rcpp::NumericMatrix mus(ncomp, maxclust*ncomp);
 	Rcpp::IntegerVector sizes(maxclust*ncomp);
 	
+	//avoid Rcpp::Matrix for now (buggy with long vectors)
+	Mat<int> mycounts = asMat(counts);
+	Mat<int> mycoords = asMat(coords);
+	
 	//parallelize on the columns of the matrix
 	#pragma omp parallel num_threads(nthreads)
 	{
@@ -210,8 +214,8 @@ Rcpp::List clusterAverages2(Rcpp::IntegerMatrix counts, Rcpp::IntegerMatrix coor
 		std::vector<int> vnum(ncomp*maxclust);
 		#pragma omp for nowait
 		for (int i = 0; i < ncol; ++i){
-			Rcpp::MatrixColumn<INTSXP> tcol = counts.column(i);
-			Rcpp::MatrixColumn<INTSXP> dcol = coords.column(i);
+			int* tcol = mycounts.colptr(i);
+			int* dcol = mycoords.colptr(i);
 			for (int j = 0; j < ncomp; ++j){
 				int c = dcol[j];
 				if (c < 0 || c >= Cs[j].length()) Rcpp::stop("invalid clustering or invalid counts");
@@ -275,11 +279,15 @@ Rcpp::NumericMatrix fillPosteriors(Rcpp::IntegerMatrix coords, Rcpp::List cluste
 		Cs.push_back(v);
 	}
 	
+	//avoid Rcpp matrix for now
+	Mat<double> myposteriors = asMat(posteriors);
+	Mat<int> mycoords = asMat(coords);
+	
 	//parallelize on the columns of the matrix
 	#pragma omp parallel for num_threads(nthreads)
 	for (int i = 0; i < ncol; ++i){
-		Rcpp::MatrixColumn<INTSXP> ccol = coords.column(i);
-		Rcpp::MatrixColumn<REALSXP> pcol = posteriors.column(i);
+		int* ccol = mycoords.colptr(i);
+		double* pcol = myposteriors.colptr(i);
 		for (int j = 0; j < ncomp; ++j){
 			int c = ccol[j];
 			if (c < 0 || c >= Cs[j].length()) Rcpp::stop("invalid clustering or invalid coords");

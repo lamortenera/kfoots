@@ -608,7 +608,7 @@ static void lLikMat_core(TMat<int> counts, Vec<double> mus, Vec<double> rs, Mat<
             //compute and add contribution of the multinomial 
             #pragma omp for schedule(static) 
             for (int col = 0; col < ncol; ++col){
-                int* countsCol = counts.colptr(col);;
+                int* countsCol = counts.colptr(col);
                 double* llikCol = llik.colptr(col);
                 double mtnm = mtnmConst[col];
                 double* tmpNBcol = tmpNB.colptr(map[col]);

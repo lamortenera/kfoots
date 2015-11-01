@@ -341,6 +341,12 @@ List viterbi(NumericMatrix initP, NumericMatrix trans, NumericMatrix lliks, Nume
     std::vector<long double> scores(nmod);
     std::vector<long double> new_scores(nmod);
     
+    /* avoid the Rcpp matrix object for now */
+    Mat<double> myinitP = asMat(initP);
+    Mat<double> mylliks = asMat(lliks);
+    Mat<int> mybacktrack = asMat(backtrack);
+    
+    
     /* log-transform the transition probabilities */
     NumericMatrix ltrans(nmod,nmod);
     for (diter curr = ltrans.begin(), currt = trans.begin(); curr < ltrans.end(); ++curr, ++currt){
@@ -353,16 +359,16 @@ List viterbi(NumericMatrix initP, NumericMatrix trans, NumericMatrix lliks, Nume
         int chunk_end = chunk_start + seqlens[o];
         /* dynamic programming */
         {
-            MatrixColumn<REALSXP> llikcol = lliks.column(chunk_start);
-            MatrixColumn<REALSXP> curr_initP = initP.column(o);
+            double* llikcol = mylliks.colptr(chunk_start);
+            double* curr_initP = myinitP.colptr(o);
             for (int t = 0; t < nmod; ++t){
                 scores[t] = llikcol[t] + log(curr_initP[t]);
             }
         }
         for (int i = chunk_start + 1; i < chunk_end; ++i){
             
-            MatrixColumn<REALSXP> llikcol = lliks.column(i);
-            MatrixColumn<INTSXP> backtrackcol = backtrack.column(i-chunk_start);
+            double* llikcol = mylliks.colptr(i);
+            int* backtrackcol = mybacktrack.colptr(i-chunk_start);
             
             for (int t = 0; t < nmod; ++t){
                 int maxs = 0;

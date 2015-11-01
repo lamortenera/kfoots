@@ -75,24 +75,24 @@ struct Mat {
 	inline T operator[] (int i) const {return ptr[i];}
 	inline T& operator[] (int i){return ptr[i];}
 	
-	inline T operator() (int row, int col) const {return ptr[row + col*nrow];}
-	inline T& operator() (int row, int col) {return ptr[row + col*nrow];}
+	inline T* colptr(int col){
+		return ptr + ((long)col)*nrow;
+	}
+
+	inline T operator() (int row, int col) const {return *(colptr(col) + row);}
+	inline T& operator() (int row, int col) {return *(colptr(col) + row);}
 	
 	Mat subsetCol(int colStart, int colEnd){
-		return Mat(ptr + nrow*colStart, nrow, colEnd-colStart);
+		return Mat(colptr(colStart), nrow, colEnd-colStart);
 	}
 	
 	
 	inline T get(int row, int col){
-		return ptr[row + col*nrow];
-	}
-	
-	inline T* colptr(int col){
-		return ptr + col*nrow;
+		return *(colptr(col) + row);
 	}
 	
 	inline Vec<T> getCol(int col){
-		return Vec<T>(ptr + col*nrow, nrow);
+		return Vec<T>(colptr(col), nrow);
 	}
 	
 	Mat(SEXP x){

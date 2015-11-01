@@ -340,7 +340,7 @@ inline Rcpp::List fitModels_helper(TMat<int> counts, Rcpp::NumericVector posteri
     int nmodels = models.length();
     int footlen = counts.nrow;
     
-    if (    counts.ncol*nmodels != posteriors.length()){
+    if (    ((long) counts.ncol)*nmodels != posteriors.length()){
         Rcpp::stop("Invalid arguments passed to fitModels");
     }
     Mat<double> postMat(posteriors.begin(), nmodels, counts.ncol);
