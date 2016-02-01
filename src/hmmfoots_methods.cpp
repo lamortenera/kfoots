@@ -254,8 +254,12 @@ static inline double fb_core(Mat<double> initPs, Mat<double> trans, Mat<double> 
     //outside #pragma omp we can use exceptions :D
     if (gretcode != FB_OK) {
         if (gretcode == FB_WRONG_DIM) Rcpp::stop("Invalid array dimensions passed to 'fb_iter'");
-        Rcpp::stop("Underflow error at sequence:position @" + 
-        std::to_string(guflowchunk+1) + ":" + std::to_string(gretcode+1) + "@");
+        std::ostringstream msg_strm;
+        msg_strm << "Underflow error at sequence:relpos:abspos @" <<
+                    guflowchunk + 1 << ":" << gretcode + 1 << ":" << 
+                    chunk_starts[guflowchunk] + gretcode + 1 << "@";
+        std::string msg = msg_strm.str();
+        Rcpp::stop(msg);
     }
     
     /* normalizing new_trans matrix */
