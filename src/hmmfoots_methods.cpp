@@ -259,7 +259,12 @@ static inline double fb_core(Mat<double> initPs, Mat<double> trans, Mat<double> 
                     guflowchunk + 1 << ":" << gretcode + 1 << ":" << 
                     chunk_starts[guflowchunk] + gretcode + 1 << "@";
         std::string msg = msg_strm.str();
-        Rcpp::stop(msg);
+        // Rcpp::stop is broken in Rcpp 0.12.8
+        // std::range_error is a workaround. I am changing it
+        // only here because this is the only error message
+        // that is part of an API with the epicseg package
+        // (I know, bad practice to use error messages in an API).
+        throw std::range_error(msg);
     }
     
     /* normalizing new_trans matrix */

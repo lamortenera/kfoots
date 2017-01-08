@@ -133,7 +133,7 @@ test_that("hmmfoots works", {
             }
         }
     }
-    expect_equal(res, mcres, 1e-6)
+    expect_equal(res, mcres, 1e-5)
     #bug <- list(res=res, mcres=mcres, counts=counts)
     #save(bug, file="/project/ale/home/data/kfoots_pkg/bug.Rdata")
 })
