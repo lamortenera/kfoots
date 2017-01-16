@@ -138,3 +138,26 @@ test_that("hmmfoots works", {
     #save(bug, file="/project/ale/home/data/kfoots_pkg/bug.Rdata")
 })
 
+
+test_that("maxiter=0 means no training", {
+    counts <- exampleHMMData(c(1000, 2500, 1500))
+    k <- 4
+    init <- initAlgo(counts, k)
+    trans <- t(sapply(1:k, function(i) init$mix_coeff))
+    initP <- matrix(nrow=k, rep(init$mix_coeff, 1))
+    models <- init$models
+    mix_coeff <- init$mix_coeff
+
+    fit <- kfoots(counts, models, "HMM", trans=trans, initP=initP, maxiter=0)
+    expect_equal(models, fit$models)
+    expect_equal(trans, fit$trans)
+    expect_equal(initP, fit$initP)
+
+    fit <- kfoots(counts, models, "MM", mix_coeff=mix_coeff, maxiter=0)
+    expect_equal(models, fit$models)
+    expect_equal(mix_coeff, fit$mix_coeff)
+})
+
+
+    
+

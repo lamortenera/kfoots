@@ -35,7 +35,8 @@ NULL
 #' @param tol Tolerance value used to determine convergence of the EM
 #'     algorithm. The algorithm will converge when the absolute difference
 #'     in the log-likelihood between two iterations will fall below this value.
-#' @param maxiter maximum number of iterations in the EM algorithm
+#' @param maxiter maximum number of iterations in the EM algorithm. Use 0 if 
+#'     you don't want to do any training iteration.
 #' @param nthreads number of threads used. The backward-forward step in the HMM learning
 #'     cannot use more threads than the number of sequences.
 #' @param nbtype type of training for the negative binomial. Accepted types are:
@@ -150,10 +151,11 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
                 if (is.null(mix_coeff)) mix_coeff <- init$mix_coeff
             }
         }
-    }
+        nbtype_input_check <- nbtype
+    } else { nbtype_input_check <- "indep" }
     
     #make sure that the provided (or computed) models are all right
-    checkModels(models, k, footlen, nbtype)
+    checkModels(models, k, footlen, nbtype_input_check)
     
     #set framework probabilities
     if (framework=="HMM"){
@@ -198,8 +200,8 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
     
     tryCatch({
     #MAIN LOOP
-    if (verbose) cat("starting main loop\n")
-    for (iter in 1:maxiter){
+    if (maxiter > 0 && verbose) cat("starting main loop\n")
+    for (iter in safeSeq(1, maxiter)){
         #get log likelihoods
         lLikMat(lliks=lliks, counts, models, ucs=ucs, mConst=mConst, nthreads=nthreads)
         
@@ -277,7 +279,11 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
     
     #final result
     result <- list(models=models, loglik=loglik, posteriors=posteriors, clusters=clusters,
-        converged=converged, llhistory=llhistory[1:iter])
+        converged=converged)
+
+    if (!is.null(iter)) {
+        result$llhistory <- llhistory[1:iter]
+    } else result$llhistory <- NULL
     
     #if framework==HMM, add init and transition probs and compute viterbi path
     if (framework=="HMM"){
@@ -289,6 +295,11 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
         result$mix_coeff <- mix_coeff
     }
     result
+}
+
+safeSeq <- function(start, end){
+    if (end < start) return(NULL)
+    start:end
 }
 
 #compute splits for the count matrix such that:
@@ -320,7 +331,7 @@ checkModels <- function(models, k, nrow, nbtype){
         if (length(model$ps) != nrow || !isProbVector(model$ps)) stop("'ps' vector of each model must have the right length and sum up to 1")
         if (!(all(is.finite(c(model$mu, model$ps))) && (unlist(model) >= 0))) stop("non-finite or negative model parameters")
         if (nbtype=="dep" && model$r != models[[1]]$r) warning("models not consistent with the 'dep' setting")
-        if (nbtype=="pois" && model$r != Inf) warning("models not consistent with the 'indep' setting")
+        if (nbtype=="pois" && model$r != Inf) warning("models not consistent with the 'pois' setting")
     }
 
 }
