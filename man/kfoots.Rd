@@ -39,7 +39,8 @@ each row is a state and each column is a sequence.}
 algorithm. The algorithm will converge when the absolute difference
 in the log-likelihood between two iterations will fall below this value.}
 
-\item{maxiter}{maximum number of iterations in the EM algorithm}
+\item{maxiter}{maximum number of iterations in the EM algorithm. Use 0 if 
+you don't want to do any training iteration.}
 
 \item{nthreads}{number of threads used. The backward-forward step in the HMM learning
 cannot use more threads than the number of sequences.}

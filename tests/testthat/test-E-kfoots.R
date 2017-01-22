@@ -148,16 +148,45 @@ test_that("maxiter=0 means no training", {
     models <- init$models
     mix_coeff <- init$mix_coeff
 
-    fit <- kfoots(counts, models, "HMM", trans=trans, initP=initP, maxiter=0)
+    fit <- kfoots(counts, models, "HMM", trans=trans, initP=initP, maxiter=0, verbose=F)
     expect_equal(models, fit$models)
     expect_equal(trans, fit$trans)
     expect_equal(initP, fit$initP)
 
-    fit <- kfoots(counts, models, "MM", mix_coeff=mix_coeff, maxiter=0)
+    fit <- kfoots(counts, models, "MM", mix_coeff=mix_coeff, maxiter=0, verbose=F)
     expect_equal(models, fit$models)
     expect_equal(mix_coeff, fit$mix_coeff)
 })
 
+test_that("split4speed option runs", {
+    seqlens <- c(1000, 2500, 1500)
+    counts <- exampleHMMData(seqlens)
+    for (slens in list(seqlens, sum(seqlens))){
+        k <- 4
+        init <- initAlgo(counts, k)
+        trans <- t(sapply(1:k, function(i) init$mix_coeff))
+        initP <- matrix(nrow=k, rep(init$mix_coeff, length(slens)))
+        models <- init$models
+        mix_coeff <- init$mix_coeff
+
+        kfoots(counts, models, "HMM", trans=trans, initP=initP, maxiter=5,
+               nthreads=5, split4speed=FALSE, seqlens=slens, verbose=F)
+
+        expect_true(TRUE)
+
+        kfoots(counts, models, "HMM", trans=trans, initP=initP, maxiter=5,
+               nthreads=5, split4speed=TRUE, seqlens=slens, verbose=F)
+
+        expect_true(TRUE)
+
+        fit <- kfoots(counts, models, "HMM", trans=trans, initP=initP, maxiter=0,
+                        nthreads=5, split4speed=TRUE, seqlens=slens, verbose=F)
+        expect_equal(initP, fit$initP)
+    }
+})
+
+
+    
 
     
 

@@ -125,12 +125,6 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
         } else if (sum(seqlens) > nloci){
             stop("invalid value for seqlens, the chunks sum up to more than the total input length")
         }
-        if (split4speed){
-            s4s <- refineSplits(seqlens, nthreads)
-            seqlens <- s4s$newlens
-        } else if (length(seqlens)<nthreads && verbose){
-            message("less sequences than threads, use option 'split4speed' to take fully advantage of all threads")
-        }
     }
     
     #set models
@@ -179,6 +173,15 @@ kfoots <- function(counts, k, framework=c("HMM", "MM"), mix_coeff=NULL, trans=NU
             stop("'initP' must be a matrix, or a vector if there is only one sequence")
         }
         if (!all(apply(initP, 2, isProbVector))) stop("'initP' columns must sum up to 1")
+        if (split4speed){
+            s4s <- refineSplits(seqlens, nthreads)
+            seqlens <- s4s$newlens
+            new_initP <- matrix(1/k, nrow=k, ncol=length(seqlens))
+            new_initP[,s4s$origstarts] <- initP
+            initP <- new_initP
+        } else if (length(seqlens)<nthreads && verbose){
+            message("less sequences than threads, use option 'split4speed' to take fully advantage of all threads")
+        }
         
     } else {#(framework == "MM")
         #make sure that the mixture coefficients are all right
